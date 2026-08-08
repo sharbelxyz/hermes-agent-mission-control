@@ -60,7 +60,8 @@ async function fetchFromTwitterApi(url: string): Promise<{ title: string; body: 
     let imageUrl = "";
     const coverKey = article.cover_media || "";
     if (coverKey && data.includes?.media) {
-      const media = data.includes.media.find((m: any) => m.media_key === coverKey);
+      type BraveMedia = { media_key: string; url?: string; preview_image_url?: string };
+      const media = data.includes.media.find((m: BraveMedia) => m.media_key === coverKey);
       if (media) imageUrl = media.url || media.preview_image_url || "";
     }
 
@@ -100,7 +101,7 @@ async function braveSearchUrl(
 
     // Find the result that matches our URL (or is close)
     const urlHost = new URL(url).hostname.replace("www.", "");
-    const match = results.find((r: any) => {
+    const match = results.find((r: { url: string }) => {
       try {
         const rHost = new URL(r.url).hostname.replace("www.", "");
         return rHost === urlHost;
