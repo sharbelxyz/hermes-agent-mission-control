@@ -1,0 +1,33 @@
+{
+  "fixture": "invalid-content-bearing",
+  "records": [
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_terminal",
+      "operation_id": "op_content_bearing",
+      "attempt_id": "att_content_bearing_1",
+      "span_id": "span_content_bearing_terminal",
+      "idempotency_key": "sha256:5656565656565656565656565656565656565656565656565656565656565656",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "code",
+      "operation_type": "model",
+      "operation_name": "content_aliases",
+      "status": "succeeded",
+      "started_at": "2026-08-05T00:13:00.000Z",
+      "ended_at": "2026-08-05T00:13:01.000Z",
+      "duration_ms": 1000,
+      "provider": "openai",
+      "model": "gpt-5",
+      "usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "reported", "amount_usd": 0.001 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false },
+      "prompt": "MALICIOUS_PROMPT_SHOULD_NOT_ECHO",
+      "response": "MALICIOUS_RESPONSE_SHOULD_NOT_ECHO",
+      "tool_args": "MALICIOUS_ARGS_SHOULD_NOT_ECHO",
+      "file_body": "MALICIOUS_FILE_BODY_SHOULD_NOT_ECHO",
+      "secret": "MALICIOUS_SECRET_SHOULD_NOT_ECHO",
+      "pii": "MALICIOUS_PII_SHOULD_NOT_ECHO"
+    }
+  ]
+}

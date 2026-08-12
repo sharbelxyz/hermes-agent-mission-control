@@ -1,0 +1,31 @@
+{
+  "fixture": "blocked-tool",
+  "records": [
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_terminal",
+      "operation_id": "op_blocked_tool",
+      "attempt_id": "att_blocked_tool_1",
+      "span_id": "span_blocked_tool_terminal",
+      "idempotency_key": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "code",
+      "operation_type": "tool",
+      "operation_name": "blocked_tool_call",
+      "status": "blocked",
+      "started_at": "2026-08-05T00:08:00.000Z",
+      "ended_at": "2026-08-05T00:08:00.010Z",
+      "duration_ms": 10,
+      "usage": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "none", "amount_usd": 0 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false },
+      "tool": {
+        "tool_signature_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "argument_bytes": 64,
+        "result_bytes": 0,
+        "failure_class": "blocked"
+      }
+    }
+  ]
+}

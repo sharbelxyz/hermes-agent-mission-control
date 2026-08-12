@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { readHermesNativeSnapshotForServer } from "@/lib/hermes-native-mirror";
 
 export async function GET() {
-  const tasks = await prisma.hermesTask.findMany({ orderBy: [{ status: "asc" }, { priority: "desc" }], take: 200 });
-  const counts: Record<string, number> = {};
-  for (const t of tasks) counts[t.status] = (counts[t.status] || 0) + 1;
-  const lastSync = tasks[0]?.syncedAt ?? null;
-  return NextResponse.json({ tasks, counts, total: tasks.length, lastSync });
+  const snapshot = await readHermesNativeSnapshotForServer();
+  return NextResponse.json({
+    tasks: snapshot.operatorTasks.tasks,
+    counts: snapshot.operatorTasks.counts,
+    total: snapshot.operatorTasks.tasks.length,
+    lastSync: snapshot.source.lastSeen ?? snapshot.source.checkedAt,
+    source: snapshot.source.mode,
+    stale: snapshot.source.stale,
+  });
 }

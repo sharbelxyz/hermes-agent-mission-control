@@ -1,205 +1,315 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Button, Pill, rise } from "@/components/ui/kit";
+import { useCallback, useEffect, useState } from "react";
+import { Archive, CheckCircle2, Circle, Clock3, FileText, Radio, XCircle } from "lucide-react";
+import { EmptyState, Eyebrow, Panel, Pill, SectionHeader, Skeleton, rise } from "@/components/ui/kit";
 
-interface Task {
+type GoalState = "ready" | "running" | "done" | "failed";
+
+interface OperatorTask {
   id: string;
-  name: string;
-  status: string;
-  priority: string;
-  category: string;
-  dueDate?: string;
+  title: string;
+  status: "in_progress" | "pending" | "done" | "blocked";
+  priority: "high" | "medium" | "low";
+  updatedAt: string | null;
 }
 
-const columns = [
-  { id: "Not started", label: "To Do" },
-  { id: "Approved", label: "Approved" },
-  { id: "In progress", label: "In Progress" },
-  { id: "Done", label: "Done" },
-];
+interface GoalSummary {
+  id: string;
+  title: string;
+  state: GoalState;
+  source: "live-native" | "archive";
+  status: string | null;
+  updatedAt: string | null;
+  evidence: string[];
+  bytes: number;
+  sha256?: string;
+}
 
-export default function TasksPage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [newTask, setNewTask] = useState("");
-  const [showAddTask, setShowAddTask] = useState(false);
+interface TasksPayload {
+  source: "native-hermes";
+  operatorTasks: {
+    updatedAt: string | null;
+    tasks: OperatorTask[];
+    counts: Record<string, number>;
+  };
+  goals: {
+    live: Record<GoalState, GoalSummary[]>;
+    counts: Record<GoalState, number>;
+    current: GoalSummary | null;
+    recentFailed: GoalSummary[];
+  };
+  archive: {
+    counts: { done: number; failed: number; total: number };
+    artifact_counts: { done: number; failed: number; total: number };
+    manifestSha256: string | null;
+    recent: GoalSummary[];
+  };
+  sourceHealth: {
+    mode?: "local-native" | "bridge-mirror";
+    status: "ok" | "warning" | "error";
+    message: string;
+    warnings: string[];
+    errors?: string[];
+    stale?: boolean;
+  };
+}
 
-  useEffect(() => {
-    fetchTasks();
-  }, []);
+const GOAL_LABEL: Record<GoalState, string> = {
+  running: "Running now",
+  ready: "Ready",
+  failed: "Recent failed",
+  done: "Recent done",
+};
 
-  async function fetchTasks() {
-    try {
-      const res = await fetch("/api/tasks");
-      const data = await res.json();
-      setTasks(data.tasks || []);
-    } catch (e) {
-      console.error("Failed to fetch tasks", e);
-    } finally {
-      setLoading(false);
-    }
+const GOAL_TONE: Record<GoalState, "accent" | "neutral" | "up" | "down"> = {
+  running: "accent",
+  ready: "neutral",
+  done: "up",
+  failed: "down",
+};
+
+function timeAgo(d: string | null): string {
+  if (!d) return "—";
+  const diff = Date.now() - new Date(d).getTime();
+  if (Number.isNaN(diff)) return "—";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+async function getJSON<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
   }
+}
 
-  async function addTask() {
-    if (!newTask.trim()) return;
-    try {
-      await fetch("/api/tasks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newTask, status: "Not started" }),
-      });
-      setNewTask("");
-      setShowAddTask(false);
-      fetchTasks();
-    } catch (e) {
-      console.error("Failed to add task", e);
-    }
-  }
+function StatusIcon({ status }: { status: OperatorTask["status"] }) {
+  if (status === "done") return <CheckCircle2 className="h-4 w-4 text-[var(--up)]" />;
+  if (status === "blocked") return <XCircle className="h-4 w-4 text-[var(--down)]" />;
+  if (status === "in_progress") return <Clock3 className="h-4 w-4 text-[var(--accent)]" />;
+  return <Circle className="h-4 w-4 text-[var(--text-3)]" />;
+}
 
-  async function updateTaskStatus(taskId: string, newStatus: string) {
-    try {
-      await fetch("/api/tasks", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: taskId, status: newStatus }),
-      });
-      fetchTasks();
-    } catch (e) {
-      console.error("Failed to update task", e);
-    }
-  }
-
-  if (loading) {
-    return (
-      <>
-        <div className="relative z-10 w-full mx-auto pt-4">
-          <div className="flex justify-between items-center mb-10">
-            <div>
-              <div className="sk h-3 w-20 mb-3" />
-              <div className="sk h-7 w-28" />
-            </div>
-            <div className="sk h-9 w-28 rounded-full" />
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="panel p-4">
-                <div className="sk h-4 w-16 mb-4" />
-                <div className="space-y-2">
-                  {[...Array(i + 1)].map((_, j) => <div key={j} className="sk h-16 rounded-[var(--r-md)]" />)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </>
-    );
-  }
-
+function OperatorTaskRow({ task }: { task: OperatorTask }) {
+  const tone = task.status === "done" ? "up" : task.status === "blocked" ? "down" : task.status === "in_progress" ? "accent" : "neutral";
   return (
-    <>
-      <div className="relative z-10 h-full flex flex-col w-full mx-auto pt-4 pb-16">
-        <div className="hq-rise flex justify-between items-end gap-4 mb-10" style={rise(0)}>
-          <div>
-            <div className="eyebrow mb-2">Synced with Notion</div>
-            <h1 className="text-[32px] font-semibold tracking-[-0.025em] leading-none text-[var(--text)]">Tasks</h1>
-          </div>
-          <Button variant="primary" onClick={() => setShowAddTask(true)}>+ Add Task</Button>
-        </div>
-
-        {showAddTask && (
-          <div className="hq-rise elevated mb-8 p-5">
-            <input
-              type="text"
-              value={newTask}
-              onChange={(e) => setNewTask(e.target.value)}
-              placeholder="What needs to be done?"
-              className="w-full bg-[var(--surface-1)] border border-[var(--line)] text-[var(--text)] placeholder-[var(--text-3)] rounded-[var(--r-md)] px-4 py-3 mb-3 text-[14px] focus:outline-none focus:border-[var(--line-strong)]"
-              onKeyDown={(e) => e.key === "Enter" && addTask()}
-              autoFocus
-            />
-            <div className="flex gap-2">
-              <Button variant="primary" onClick={addTask}>Add Task</Button>
-              <Button variant="ghost" onClick={() => setShowAddTask(false)}>Cancel</Button>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 overflow-hidden">
-          {columns.map((column, idx) => {
-            const count = tasks.filter((t) => t.status === column.id).length;
-            return (
-              <div key={column.id} className="hq-rise panel flex flex-col overflow-hidden" style={rise(idx + 1)}>
-                <div className="px-4 py-3.5 flex items-center justify-between">
-                  <span className="eyebrow">{column.label}</span>
-                  <span className="num text-[11px] text-[var(--text-3)]">{count}</span>
-                </div>
-                <div className="rule" />
-                <div className="flex-1 p-2.5 space-y-2 overflow-y-auto">
-                  {tasks
-                    .filter((t) => t.status === column.id)
-                    .map((task) => (
-                      <TaskCard
-                        key={task.id}
-                        task={task}
-                        done={column.id === "Done"}
-                        onStatusChange={(status) => updateTaskStatus(task.id, status)}
-                      />
-                    ))}
-                  {count === 0 && (
-                    <p className="text-[var(--text-4)] text-[12.5px] text-center py-8">No tasks</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+    <div className="flex items-start gap-3 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface-1)] p-3.5">
+      <StatusIcon status={task.status} />
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-medium leading-snug text-[var(--text)]">{task.title}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Pill tone={tone} className="!py-0.5 !text-[10px]">{task.status.replace("_", " ")}</Pill>
+          <span className="num text-[10.5px] text-[var(--text-3)]">{task.priority}</span>
+          {task.updatedAt && <span className="num text-[10.5px] text-[var(--text-3)]">{timeAgo(task.updatedAt)}</span>}
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
-function TaskCard({
-  task,
-  done,
-  onStatusChange,
-}: {
-  task: Task;
-  done?: boolean;
-  onStatusChange: (status: string) => void;
-}) {
-  const priorityTone: Record<string, "warn" | "neutral"> = {
-    High: "warn",
-    Medium: "neutral",
-    Low: "neutral",
-  };
+function GoalCard({ goal }: { goal: GoalSummary }) {
+  return (
+    <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface-1)] p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-[13px] font-medium leading-snug text-[var(--text)]">{goal.title}</p>
+        <Pill tone={GOAL_TONE[goal.state]} className="shrink-0 !py-0.5 !text-[10px]">
+          {goal.status ?? goal.state}
+        </Pill>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3 num text-[10.5px] text-[var(--text-3)]">
+        <span>{fmtBytes(goal.bytes)}</span>
+        <span>{timeAgo(goal.updatedAt)}</span>
+        {goal.sha256 && <span>sha {goal.sha256.slice(0, 10)}</span>}
+      </div>
+      {goal.evidence.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {goal.evidence.map((item) => (
+            <span key={item} className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10.5px] text-[var(--text-3)]">
+              {item}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function TasksPage() {
+  const [payload, setPayload] = useState<TasksPayload | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const load = useCallback(async () => {
+    const data = await getJSON<TasksPayload>("/api/tasks");
+    if (data) setPayload(data);
+    setLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    const firstLoad = setTimeout(() => {
+      void load();
+    }, 0);
+    const interval = setInterval(load, 30_000);
+    return () => {
+      clearTimeout(firstLoad);
+      clearInterval(interval);
+    };
+  }, [load]);
+
+  const operatorTasks = payload?.operatorTasks.tasks ?? [];
+  const liveGoals = payload?.goals.live ?? { ready: [], running: [], done: [], failed: [] };
+  const totalLive = payload ? Object.values(payload.goals.counts).reduce((sum, count) => sum + count, 0) : 0;
+  const sourceMessage = payload?.sourceHealth.errors?.[0] ?? payload?.sourceHealth.warnings[0] ?? null;
 
   return (
-    <div className="rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface-1)] p-3.5 transition-colors hover:border-[var(--line-strong)] hover:bg-[var(--surface-2)] cursor-pointer group">
-      <p className={`font-medium text-[13px] mb-3 leading-relaxed ${done ? "text-[var(--text-3)] line-through" : "text-[var(--text)]"}`}>
-        {task.name}
-      </p>
-      <div className="flex items-center gap-2 flex-wrap">
-        {task.priority && (
-          <Pill tone={priorityTone[task.priority] || "neutral"}>{task.priority}</Pill>
-        )}
-        {task.category && (
-          <span className="text-[11px] text-[var(--text-3)]">{task.category}</span>
-        )}
+    <div className="relative z-10 h-full w-full mx-auto pt-4 pb-16">
+      <div className="hq-rise mb-10 flex flex-wrap items-end justify-between gap-6" style={rise(0)}>
+        <div>
+          <Eyebrow>Native work state</Eyebrow>
+          <h1 className="mt-2.5 text-[40px] font-semibold tracking-[-0.025em] leading-none text-[var(--text)]">
+            Goals &amp; Operator Tasks
+          </h1>
+          <p className="mt-3 max-w-2xl text-[13px] leading-relaxed text-[var(--text-3)]">
+            Live native runtime state is read from the new Hermes root. Historical goal files are shown only from the imported archive manifest.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-3 gap-5 text-center">
+          <div>
+            <div className="num text-[24px] font-semibold text-[var(--accent)]">{totalLive}</div>
+            <div className="eyebrow mt-1">live native</div>
+          </div>
+          <div>
+            <div className="num text-[24px] font-semibold text-[var(--warn)]">{operatorTasks.length}</div>
+            <div className="eyebrow mt-1">operator</div>
+          </div>
+          <div>
+            <div className="num text-[24px] font-semibold text-[var(--text)]">{payload?.archive.counts.total ?? 0}</div>
+            <div className="eyebrow mt-1">archive</div>
+          </div>
+        </div>
       </div>
-      <div className="mt-3 pt-3 border-t border-[var(--line)] opacity-0 group-hover:opacity-100 transition-opacity">
-        <select
-          className="text-[12px] bg-[var(--surface-1)] text-[var(--text-2)] rounded-[var(--r-sm)] px-3 py-2 w-full border border-[var(--line)] focus:outline-none focus:border-[var(--line-strong)]"
-          value={task.status}
-          onChange={(e) => onStatusChange(e.target.value)}
-        >
-          {columns.map((col) => (
-            <option key={col.id} value={col.id}>
-              Move to {col.label}
-            </option>
-          ))}
-        </select>
-      </div>
+
+      {!loaded ? (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <Skeleton className="h-80" />
+          <Skeleton className="h-80" />
+          <Skeleton className="h-80" />
+        </div>
+      ) : (
+        <>
+          {sourceMessage ? (
+            <Panel className="mb-6 p-4">
+              <div className="flex items-start gap-2 text-[12.5px] text-[var(--text-2)]">
+                <Radio className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--warn)]" />
+                <span>{sourceMessage}</span>
+              </div>
+            </Panel>
+          ) : null}
+
+          <section>
+            <SectionHeader
+              label="Operator registry"
+              title="Current operator tasks"
+              action={<Pill tone={payload?.sourceHealth.stale ? "warn" : "accent"}>{payload?.sourceHealth.mode === "bridge-mirror" ? "bridge mirror" : "local native"}</Pill>}
+            />
+            {operatorTasks.length === 0 ? (
+              <Panel className="p-2">
+                <EmptyState icon={<FileText className="h-6 w-6" />} title="No operator tasks" hint="The operator task registry is empty." />
+              </Panel>
+            ) : (
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                {operatorTasks.map((task) => <OperatorTaskRow key={task.id} task={task} />)}
+              </div>
+            )}
+          </section>
+
+          <section className="mt-12">
+            <SectionHeader
+              label="Live native runtime"
+              title="Goals by fixed runtime folder"
+              action={<span className="num text-[11px] text-[var(--text-3)]">read-only display</span>}
+            />
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
+              {(["running", "ready", "failed", "done"] as const).map((state) => (
+                <Panel key={state} className="flex min-h-64 flex-col p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <Eyebrow>{GOAL_LABEL[state]}</Eyebrow>
+                    <Pill tone={GOAL_TONE[state]} className="!py-0.5 !text-[10px]">{liveGoals[state].length}</Pill>
+                  </div>
+                  {liveGoals[state].length === 0 ? (
+                    <p className="py-8 text-center text-[12.5px] text-[var(--text-4)]">No live native goals</p>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {liveGoals[state].map((goal) => <GoalCard key={goal.id} goal={goal} />)}
+                    </div>
+                  )}
+                </Panel>
+              ))}
+            </div>
+          </section>
+
+          <section className="mt-12">
+            <SectionHeader
+              label="Historical archive"
+              title="Imported legacy goal counts"
+              action={<Pill tone="neutral">archive only</Pill>}
+            />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+              <Panel className="p-5">
+                <div className="flex items-center gap-2">
+                  <Archive className="h-4 w-4 text-[var(--text-3)]" />
+                  <Eyebrow>Manifest</Eyebrow>
+                </div>
+                <div className="mt-5 grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <div className="num text-[24px] font-semibold text-[var(--up)]">{payload?.archive.counts.done ?? 0}</div>
+                    <div className="eyebrow mt-1">done</div>
+                  </div>
+                  <div>
+                    <div className="num text-[24px] font-semibold text-[var(--down)]">{payload?.archive.counts.failed ?? 0}</div>
+                    <div className="eyebrow mt-1">failed</div>
+                  </div>
+                  <div>
+                    <div className="num text-[24px] font-semibold text-[var(--text)]">{payload?.archive.counts.total ?? 0}</div>
+                    <div className="eyebrow mt-1">total</div>
+                  </div>
+                </div>
+                {payload?.archive.manifestSha256 && (
+                  <p className="num mt-5 break-all text-[10.5px] text-[var(--text-3)]">
+                    manifest {payload.archive.manifestSha256.slice(0, 24)}
+                  </p>
+                )}
+                <p className="mt-3 text-[11.5px] text-[var(--text-3)]">
+                  evidence artifacts <span className="num">{payload?.archive.artifact_counts.total ?? 0}</span>
+                </p>
+              </Panel>
+              <Panel className="p-4">
+                {payload?.archive.recent.length ? (
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                    {payload.archive.recent.slice(0, 10).map((goal) => <GoalCard key={goal.id} goal={goal} />)}
+                  </div>
+                ) : (
+                  <EmptyState icon={<Archive className="h-6 w-6" />} title="No archive manifest rows" hint="Archive files are counted only after import-manifest.json exists." />
+                )}
+              </Panel>
+            </div>
+          </section>
+        </>
+      )}
     </div>
   );
 }

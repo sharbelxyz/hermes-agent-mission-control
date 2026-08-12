@@ -1,17 +1,9 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { CommandPalette } from '@/components/command-palette';
 
 export function ConditionalLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const isStandalone = pathname === '/login';
-
-  if (isStandalone) {
-    return <>{children}</>;
-  }
-
   return (
     <div className="flex h-screen">
       {/* One app-level ambient at the root — outside the scrolling/transformed

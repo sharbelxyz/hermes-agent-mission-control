@@ -22,8 +22,10 @@
   <dict>
     <key>DATABASE_URL</key>
     <string>PASTE_YOUR_DATABASE_URL_HERE</string>
-    <key>HERMES_BOARD</key>
-    <string>default</string>
+    <key>HERMES_NATIVE_INTERNAL_SECRET</key>
+    <string>PASTE_THE_NEXT_INTERNAL_API_SECRET_HERE</string>
+    <key>HERMES_NATIVE_SNAPSHOT_URL</key>
+    <string>http://127.0.0.1:3020/api/hermes/native</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/YOU/.local/bin</string>
   </dict>

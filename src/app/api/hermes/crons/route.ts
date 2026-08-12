@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireInternalApiSecret } from "@/lib/internal-api-auth";
 import { prisma } from "@/lib/prisma";
 
 export type CronJob = {
@@ -52,13 +53,18 @@ function parseCrons(raw: string): CronJob[] {
 
 export async function GET() {
   const row = await prisma.dataStore.findUnique({ where: { key: "hermes-crons" } });
-  const data = (row?.data as { raw?: string; syncedAt?: string } | null) ?? {};
-  const jobs = data.raw ? parseCrons(data.raw) : [];
+  const data = (row?.data as { raw?: string; jobs?: string[] | CronJob[]; syncedAt?: string } | null) ?? {};
+  const jobs = Array.isArray(data.jobs)
+    ? data.jobs.flatMap((job) => typeof job === "string" ? parseCrons(job) : [job]).slice(0, 200)
+    : data.raw ? parseCrons(data.raw) : [];
   return NextResponse.json({ jobs, syncedAt: data.syncedAt ?? null });
 }
 
 // POST { op: "create"|"pause"|"resume"|"run"|"remove"|"edit", ... } → queue a cron mutation for the bridge
 export async function POST(req: Request) {
+  const unauthorized = requireInternalApiSecret(req);
+  if (unauthorized) return unauthorized;
+
   const b = await req.json().catch(() => ({}));
   const op = (b.op || "").toString();
   if (!["create", "pause", "resume", "run", "remove", "edit"].includes(op))

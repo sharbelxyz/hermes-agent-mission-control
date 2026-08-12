@@ -1,0 +1,72 @@
+{
+  "fixture": "duplicate",
+  "records": [
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_terminal",
+      "operation_id": "op_duplicate",
+      "attempt_id": "att_duplicate_1",
+      "span_id": "span_duplicate_terminal",
+      "idempotency_key": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "code",
+      "operation_type": "coder",
+      "operation_name": "duplicate_terminal",
+      "status": "succeeded",
+      "started_at": "2026-08-05T00:05:00.000Z",
+      "ended_at": "2026-08-05T00:05:01.000Z",
+      "duration_ms": 1000,
+      "usage": { "input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "estimated", "amount_usd": 0.001 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false }
+    },
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_terminal",
+      "operation_id": "op_duplicate",
+      "attempt_id": "att_duplicate_1",
+      "span_id": "span_duplicate_terminal",
+      "idempotency_key": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "code",
+      "operation_type": "coder",
+      "operation_name": "duplicate_terminal",
+      "status": "succeeded",
+      "started_at": "2026-08-05T00:05:00.000Z",
+      "ended_at": "2026-08-05T00:05:01.000Z",
+      "duration_ms": 1000,
+      "usage": { "input_tokens": 10, "output_tokens": 5, "total_tokens": 15, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "estimated", "amount_usd": 0.001 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false }
+    },
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "export_state",
+      "operation_id": "op_duplicate",
+      "attempt_id": "att_duplicate_1",
+      "span_id": "span_duplicate_export",
+      "idempotency_key": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "export",
+      "operation_type": "export",
+      "operation_name": "duplicate_export",
+      "status": "duplicate",
+      "started_at": "2026-08-05T00:05:02.000Z",
+      "ended_at": "2026-08-05T00:05:02.010Z",
+      "duration_ms": 10,
+      "usage": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "none", "amount_usd": 0 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false },
+      "export": {
+        "state": "duplicate",
+        "local_recorded": true,
+        "upstream_recorded": false,
+        "replay_count": 0,
+        "duplicate_of_idempotency_key": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+      }
+    }
+  ]
+}
