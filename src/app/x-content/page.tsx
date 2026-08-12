@@ -737,14 +737,11 @@ export default function XContentPage() {
   }
 
   if (fetchError) {
-    const is401 = fetchError === "401";
     return (
       <EmptyState
-        title={is401 ? "Session expired" : "Failed to load drafts"}
-        hint={is401 ? "Your login session expired. Please sign back in." : fetchError}
-        action={is401
-          ? <a href="/login" className="btn-primary px-4 py-2 text-[13px]">Sign in</a>
-          : <button onClick={loadDrafts} className="btn-ghost px-4 py-2 text-[13px]">Retry</button>}
+        title="Failed to load drafts"
+        hint={fetchError}
+        action={<button onClick={loadDrafts} className="btn-ghost px-4 py-2 text-[13px]">Retry</button>}
       />
     );
   }

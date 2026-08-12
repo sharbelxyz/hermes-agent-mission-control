@@ -1,0 +1,54 @@
+{
+  "fixture": "coder-model-tool-success",
+  "records": [
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_terminal",
+      "operation_id": "op_coder_success",
+      "attempt_id": "att_coder_success_1",
+      "span_id": "span_coder_model_terminal",
+      "idempotency_key": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "code",
+      "operation_type": "model",
+      "operation_name": "coder_model_call",
+      "status": "succeeded",
+      "started_at": "2026-08-05T00:01:00.000Z",
+      "ended_at": "2026-08-05T00:01:04.000Z",
+      "duration_ms": 4000,
+      "provider": "openai",
+      "model": "gpt-5-codex",
+      "usage": { "input_tokens": 1000, "output_tokens": 700, "total_tokens": 1700, "cache_read_tokens": 50, "cache_write_tokens": 0 },
+      "cost": { "basis": "reported", "amount_usd": 0.08 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false }
+    },
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_terminal",
+      "operation_id": "op_coder_success",
+      "attempt_id": "att_coder_success_1",
+      "span_id": "span_coder_tool_terminal",
+      "parent_span_id": "span_coder_model_terminal",
+      "idempotency_key": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "code",
+      "operation_type": "tool",
+      "operation_name": "filesystem_read_metadata",
+      "status": "succeeded",
+      "started_at": "2026-08-05T00:01:05.000Z",
+      "ended_at": "2026-08-05T00:01:05.250Z",
+      "duration_ms": 250,
+      "usage": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "none", "amount_usd": 0 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false },
+      "tool": {
+        "tool_signature_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "argument_bytes": 48,
+        "result_bytes": 2048,
+        "failure_class": "none"
+      }
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { readHermesNativeSnapshotForServer } from "@/lib/hermes-native-mirror";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -8,25 +9,41 @@ const HL_WALLET = process.env.HL_WALLET || "";
 const HL_API = "https://api.hyperliquid.xyz/info";
 const YT_API_KEY = process.env.YOUTUBE_API_KEY;
 const YT_CHANNEL_ID = process.env.YOUTUBE_CHANNEL_ID || "";
-const HERMES_KANBAN_BOARD = process.env.HERMES_BOARD || "default";
 
-const HERMES_KANBAN_DEMO_TASKS = [
-  { id: "demo-1", title: "Research Hermes outliers and keywords", assignee: "nova", status: "done", priority: 100 },
-  { id: "demo-2", title: "Create Notion To Film trigger", assignee: "hermes", status: "done", priority: 95 },
-  { id: "demo-3", title: "Build Kanban demo in Hermy HQ", assignee: "coding-agent", status: "running", priority: 90 },
-  { id: "demo-4", title: "Write final filming script", assignee: "nova", status: "ready", priority: 85 },
-  { id: "demo-5", title: "Prepare upload SEO package", assignee: "nova", status: "ready", priority: 80 },
-  { id: "demo-6", title: "Design thumbnail concepts", assignee: "creative-agent", status: "ready", priority: 75 },
-];
+type XStatsCache = {
+  xHandle?: string;
+  xFollowers?: number;
+  xGoal?: number;
+  updatedAt?: string;
+};
 
-function formatHermesKanban(tasks: Array<{ id: string; title: string; assignee?: string | null; status: string; priority?: number | null }>, source: "live" | "demo" = "live") {
+type PnlCache = {
+  allTimePnl?: number;
+  todayPnl?: number;
+  winRate?: number;
+};
+
+type HyperliquidAccountState = {
+  marginSummary?: { accountValue?: string };
+  assetPositions?: Array<{
+    position?: {
+      coin?: string;
+      szi?: string;
+      entryPx?: string;
+      unrealizedPnl?: string;
+      leverage?: { value?: string } | string;
+    };
+  }>;
+};
+
+type HyperliquidMids = Record<string, string>;
+
+function formatHermesWork(tasks: Array<{ id: string; title: string; assignee?: string | null; status: string; priority?: number | null }>, source: "live" | "empty" = "live") {
   const counts = tasks.reduce<Record<string, number>>((acc, task) => {
     acc[task.status] = (acc[task.status] || 0) + 1;
     return acc;
   }, {});
   return {
-    board: "Hermes 24/7 Assistant Video",
-    slug: HERMES_KANBAN_BOARD,
     source,
     total: tasks.length,
     counts,
@@ -43,19 +60,17 @@ function formatHermesKanban(tasks: Array<{ id: string; title: string; assignee?:
   };
 }
 
-// Reads the HermesTask mirror kept in sync by the bridge on the Mac mini.
-// Works on Vercel (no `hermes` binary needed); falls back to demo tasks until
-// the bridge has synced at least once.
-async function loadHermesKanban() {
+async function loadHermesWork() {
   try {
-    const tasks = await prisma.hermesTask.findMany({ orderBy: [{ priority: "desc" }], take: 50 });
-    if (!tasks.length) return formatHermesKanban(HERMES_KANBAN_DEMO_TASKS, "demo");
-    return formatHermesKanban(
-      tasks.map(t => ({ id: t.id, title: t.title, assignee: t.assignee, status: t.status, priority: t.priority })),
+    const snapshot = await readHermesNativeSnapshotForServer();
+    const tasks = snapshot.operatorTasks.tasks;
+    if (!tasks.length) return formatHermesWork([], "empty");
+    return formatHermesWork(
+      tasks.map(t => ({ id: t.id, title: t.title, status: t.status, priority: t.priority === "high" ? 100 : t.priority === "medium" ? 50 : 10 })),
       "live"
     );
   } catch {
-    return formatHermesKanban(HERMES_KANBAN_DEMO_TASKS, "demo");
+    return formatHermesWork([], "empty");
   }
 }
 
@@ -94,7 +109,7 @@ export async function GET() {
     ytChannelResult,
     xStatsRow,
     ytIdeasResult,
-    hermesKanbanResult,
+    hermesWorkResult,
   ] = await Promise.allSettled([
     prisma.draft.findMany({ where: { status: "posted" }, orderBy: { postedAt: "desc" } }),
     prisma.tweetMetric.findMany(),
@@ -109,7 +124,7 @@ export async function GET() {
     fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${YT_CHANNEL_ID}&key=${YT_API_KEY}`, { next: { revalidate: 3600 } }).then(r => r.json()),
     prisma.dataStore.findUnique({ where: { key: "x-account-stats" } }),
     prisma.youtubeIdea.findMany({ where: { status: { in: ["pending", "approved"] }, NOT: { status: "rejected" } }, orderBy: { createdAt: "desc" }, take: 3 }),
-    Promise.resolve(loadHermesKanban()),
+    Promise.resolve(loadHermesWork()),
   ]);
 
   // ─── X Analytics ─────────────────────────────────────────────────────────────
@@ -191,7 +206,7 @@ export async function GET() {
   const daysSincePost = lastPosted ? Math.floor((Date.now() - new Date(lastPosted as string).getTime()) / 86400000) : 999;
 
   // ─── X account stats — live fetch + DataStore cache ───────────────────────────
-  const xStatsFile = xStatsRow.status === "fulfilled" ? (xStatsRow.value?.data as any) : null;
+  const xStatsFile = xStatsRow.status === "fulfilled" ? (xStatsRow.value?.data as XStatsCache | undefined) : null;
   let liveFollowers: number | null = null;
   const bearerToken = process.env.TWITTER_BEARER_TOKEN;
   const xHandle = xStatsFile?.xHandle || "yourhandle";
@@ -233,7 +248,7 @@ export async function GET() {
   const ytIdeasAll = ytIdeasResult.status === "fulfilled" ? ytIdeasResult.value : [];
   const topYoutubeIdeas = ytIdeasAll.slice(0, 3).map(i => ({ title: i.title, hook: i.hook || i.angle || "" }));
 
-  const hermesKanban = hermesKanbanResult.status === "fulfilled" ? hermesKanbanResult.value : { board: "Hermes 24/7 Assistant Video", slug: HERMES_KANBAN_BOARD, total: 0, counts: {}, tasks: [] };
+  const hermesWork = hermesWorkResult.status === "fulfilled" ? hermesWorkResult.value : { source: "empty", total: 0, counts: {}, tasks: [] };
 
   // ─── Build ideas (Pixel) from DataStore ────────────────────────────────────
   let topBuildIdeas: { title: string; description: string; effort: string }[] = [];
@@ -288,7 +303,7 @@ export async function GET() {
   try {
     const row = await prisma.dataStore.findUnique({ where: { key: "polymarket-pnl" } });
     if (row?.data) {
-      const pnl = row.data as any;
+      const pnl = row.data as PnlCache;
       if (pnl.allTimePnl) allTimePnl = pnl.allTimePnl;
       if (pnl.todayPnl) todayPnl = pnl.todayPnl;
       if (pnl.winRate) polyWinRate = pnl.winRate;
@@ -303,17 +318,18 @@ export async function GET() {
   let hlAllTimePnl = parseFloat(process.env.HL_ALL_TIME_PNL || "0");
 
   if (hlResult.status === "fulfilled") {
-    const [accountState, allMids, fills] = hlResult.value as [any, any, Array<{ time: number; closedPnl: string }>];
+    const [accountState, allMids, fills] = hlResult.value as [HyperliquidAccountState, HyperliquidMids, Array<{ time: number; closedPnl: string }>];
     hlBalance = parseFloat(accountState.marginSummary?.accountValue || "0");
     for (const p of accountState.assetPositions || []) {
       const pos = p.position;
-      if (!pos || parseFloat(pos.szi) === 0) continue;
-      const size = parseFloat(pos.szi);
-      const markPx = parseFloat(allMids[pos.coin] || pos.entryPx || "0");
+      const size = parseFloat(pos?.szi || "0");
+      if (!pos || size === 0) continue;
+      const markPx = parseFloat(allMids[pos.coin ?? ""] || pos.entryPx || "0");
       const unrealizedPnl = parseFloat(pos.unrealizedPnl || "0");
-      const leverage = parseFloat(pos.leverage?.value || pos.leverage || "1");
+      const leverageValue = typeof pos.leverage === "object" ? pos.leverage.value : pos.leverage;
+      const leverage = parseFloat(leverageValue || "1");
       const notional = Math.abs(size) * markPx;
-      hlPosition = { asset: pos.coin, direction: size > 0 ? "long" : "short", unrealizedPnl, unrealizedPnlPct: notional > 0 ? (unrealizedPnl / (notional / leverage)) * 100 : 0, leverage };
+      hlPosition = { asset: pos.coin || "unknown", direction: size > 0 ? "long" : "short", unrealizedPnl, unrealizedPnlPct: notional > 0 ? (unrealizedPnl / (notional / leverage)) * 100 : 0, leverage };
     }
     if (Array.isArray(fills) && fills.length > 0) {
       const cutoffMs = Date.now() - 24 * 60 * 60 * 1000;
@@ -331,7 +347,7 @@ export async function GET() {
   }
 
   // ─── Polymarket balance (env var fallback) ──────────────────────────────────
-  let polyBalance = parseFloat(process.env.POLY_BALANCE || "0");
+  const polyBalance = parseFloat(process.env.POLY_BALANCE || "0");
 
   // ─── PM2 Processes — not available on Vercel ───────────────────────────────
   const processes: { name: string; status: string; uptime: string }[] = [];
@@ -400,7 +416,7 @@ export async function GET() {
     todayPnl: 67.22,
     // System
     processes,
-    hermesKanban,
+    hermesWork,
     // Legacy
     pendingDrafts: rawPendingDrafts.length,
     tweetIdeas: await prisma.idea.count({ where: { status: { notIn: ["done", "dismissed"] } } }).catch(() => 0),

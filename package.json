@@ -14,10 +14,11 @@
     "db:seed": "npx tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^1.6.0",
+    "@prisma/adapter-pg": "6.19.2",
     "@prisma/client": "^6.19.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/formidable": "^3.4.6",
+    "@xyflow/react": "^12.11.2",
     "better-sqlite3": "^12.11.1",
     "drizzle-orm": "^0.45.2",
     "formidable": "^3.5.4",
@@ -25,7 +26,6 @@
     "grammy": "^1.44.0",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
-    "next-auth": "^4.24.13",
     "pg": "^8.19.0",
     "prisma": "^6.19.2",
     "react": "19.2.3",

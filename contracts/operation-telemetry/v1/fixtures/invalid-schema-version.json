@@ -1,0 +1,23 @@
+{
+  "fixture": "invalid-schema-version",
+  "records": [
+    {
+      "schema_version": "mc.operation.v0",
+      "record_kind": "operation_start",
+      "operation_id": "op_schema_version",
+      "attempt_id": "att_schema_version_1",
+      "span_id": "span_schema_version_start",
+      "idempotency_key": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "plan",
+      "operation_type": "planner",
+      "operation_name": "schema_version",
+      "status": "started",
+      "started_at": "2026-08-05T00:16:00.000Z",
+      "usage": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "none", "amount_usd": 0 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false }
+    }
+  ]
+}

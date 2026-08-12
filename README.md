@@ -125,7 +125,7 @@ access to Postgres and your local `hermes` CLI. See
 - **Framework:** Next.js 16 (App Router) + React 19
 - **Styling:** Tailwind CSS v4
 - **Data:** Prisma ORM + PostgreSQL
-- **Auth:** NextAuth with Google login (email allowlist)
+- **Access:** Standalone Mission Control opens directly; route-level shared secrets protect internal write/admin APIs
 - **Charts / DnD:** Recharts, react-dnd
 - **Deploy:** Vercel (website) + launchd/systemd (bridge)
 - **Agent:** [Hermes](https://github.com/NousResearch/hermes-agent) `hermes` CLI
@@ -141,7 +141,6 @@ access to Postgres and your local `hermes` CLI. See
   [Prisma Postgres](https://www.prisma.io/postgres), [Supabase](https://supabase.com),
   or Vercel Postgres
 - A **Hermes agent** installed on a machine you control (the `hermes` CLI on PATH)
-- **Google OAuth** credentials (Client ID + Secret) for login
 - A **Vercel** account (or any Node host) for deploying the website
 
 ### 1. Clone and install
@@ -159,15 +158,8 @@ cp .env.example .env
 ```
 
 Open `.env` and fill in at least the **required core** vars: `DATABASE_URL`,
-`POSTGRES_URL`, `NEXTAUTH_URL`, `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID`,
-`GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAILS`, and `NEXT_PUBLIC_OWNER_NAME`.
+`POSTGRES_URL`, `NEXT_PUBLIC_OWNER_NAME`, and `NEXT_PUBLIC_BASE_URL`.
 Every variable is documented inline in [`.env.example`](./.env.example).
-
-Generate a secret with:
-
-```sh
-openssl rand -base64 32
-```
 
 ### 3. Create the database tables
 
@@ -181,8 +173,7 @@ npx prisma db push
 npm run dev
 ```
 
-Open <http://localhost:3000> and sign in with a Google account whose email is in
-`ALLOWED_EMAILS`.
+Open <http://localhost:3000>. Mission Control loads directly.
 
 ### 5. Deploy to Vercel
 
@@ -196,9 +187,7 @@ Then:
 
 1. Add **every** env var from your `.env` in **Project → Settings → Environment
    Variables**.
-2. Set `NEXTAUTH_URL` and `NEXT_PUBLIC_BASE_URL` to your production URL.
-3. In the Google Cloud console, add the authorized redirect URI
-   `https://<your-domain>/api/auth/callback/google`.
+2. Set `NEXT_PUBLIC_BASE_URL` to your production URL.
 
 ### 6. Connect your Hermes (the bridge)
 
@@ -238,7 +227,9 @@ Hermy HQ is designed so the agent can act, but not surprise you:
   approve.
 - The bridge lives on your machine and only reaches out to Postgres and the local
   `hermes` CLI — nothing inbound.
-- Login is Google OAuth gated to the emails in `ALLOWED_EMAILS`.
+- The Mission Control UI opens directly. Keep shared secrets such as
+  `INTERNAL_API_SECRET` and `CRON_SECRET` configured for protected machine/API
+  routes.
 
 ---
 

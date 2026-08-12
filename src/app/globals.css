@@ -358,8 +358,131 @@ textarea, input {
   background: var(--line);
 }
 
+.floor-flow .react-flow {
+  background: var(--bg);
+}
+
+.floor-flow .react-flow__pane {
+  cursor: grab;
+}
+
+.floor-flow .react-flow__pane:active {
+  cursor: grabbing;
+}
+
+.floor-flow .react-flow__edge-path {
+  stroke-linecap: round;
+}
+
+.floor-flow .react-flow__edge-textbg {
+  fill: var(--surface-1);
+}
+
+.floor-flow .react-flow__controls,
+.floor-flow .react-flow__minimap {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  box-shadow: none;
+}
+
+.floor-flow .react-flow__controls-button {
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+}
+
+.floor-flow .react-flow__controls-button:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.floor-flow .react-flow__minimap {
+  background: var(--surface-1);
+}
+
+.floor-node {
+  width: 240px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--surface-1) 88%, transparent);
+  padding: 14px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(16px);
+}
+
+.floor-node-agent {
+  width: 260px;
+}
+
+.floor-node-file {
+  width: 250px;
+}
+
+.floor-node-agent.is-running {
+  border-color: color-mix(in srgb, var(--accent) 44%, transparent);
+  animation: floor-node-pulse 1.6s var(--ease-inout) infinite;
+}
+
+.floor-node-file.is-active {
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.floor-now-strip {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.floor-now-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent);
+  animation: floor-now-pulse 1.25s var(--ease-inout) infinite;
+}
+
+.pipeline-strip {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.pipeline-stage {
+  white-space: nowrap;
+}
+
+.pipeline-glow {
+  animation: pipeline-pulse 1.45s var(--ease-inout) infinite;
+}
+
+.floor-handle {
+  width: 8px !important;
+  height: 8px !important;
+  border: 1px solid var(--line-strong) !important;
+  background: var(--surface-3) !important;
+}
+
+@keyframes floor-node-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 20%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+  50% { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.03); }
+}
+
+@keyframes floor-now-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 35%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+
+@keyframes pipeline-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 24%, transparent); }
+  50% { box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 0%, transparent); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .hq-rise { animation: none; opacity: 1; }
+  .floor-node-agent.is-running,
+  .floor-now-dot,
+  .pipeline-glow { animation: none; }
   .hq-ambient::before { animation: none; }
   .panel-interactive:hover { transform: none; }
   .panel-interactive:active,
