@@ -37,6 +37,10 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# understand-anything (codebase knowledge-graph working dir)
+.ua/
+.understand-anything/
+
 # vercel
 .vercel
 
