@@ -1,0 +1,31 @@
+[Unit]
+Description=Hermy HQ local Mission Control Next server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=phillip_downs
+Group=phillip_downs
+WorkingDirectory=/home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+EnvironmentFile=/etc/hermy-hq/next.env
+Environment=HOME=/home/phillip_downs
+Environment=PATH=/home/phillip_downs/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3020
+ExecStart=/home/phillip_downs/.local/bin/npm run start -- -H 127.0.0.1 -p 3020
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ReadWritePaths=/home/phillip_downs/Documents/GitHub/hermes-agent-mission-control/data /var/cache/hermy-hq /var/log/hermy-hq /run/hermy-hq
+CacheDirectory=hermy-hq
+LogsDirectory=hermy-hq
+RuntimeDirectory=hermy-hq
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

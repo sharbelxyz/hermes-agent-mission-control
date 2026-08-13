@@ -26,6 +26,8 @@ interface LongformScript {
   tweetViews?: number;
   tweetLikes?: number;
   tweetBookmarks?: number;
+  tweetRetweets?: number;
+  tweetReplies?: number;
 }
 
 /* ── presentational tone helpers (Calm Luxury) ── */
@@ -168,7 +170,6 @@ export default function LongFormPage() {
           <p className="text-xs text-[var(--text-3)] mb-3">Why? This helps improve future scripts.</p>
           <textarea
             ref={rejectRef}
-            suppressHydrationWarning
             defaultValue=""
             placeholder="e.g. hook is weak, topic isn't right, needs more research..."
             className={`w-full ${INPUT} p-3 text-sm resize-none h-20 focus:border-[var(--down)]`}
@@ -215,8 +216,8 @@ export default function LongFormPage() {
           finalScript: data.transcript || "",
         });
         setScraped(true);
-      } catch (e: any) {
-        setScrapeError(e.message || "Could not scrape video — fill in manually");
+      } catch (e) {
+        setScrapeError(e instanceof Error ? e.message : "Could not scrape video — fill in manually");
       } finally {
         setScraping(false);
       }
@@ -297,7 +298,7 @@ export default function LongFormPage() {
                   thumbnailUrl: postForm.thumbnailUrl,
                   title: postForm.finalTitle || postModal.title,
                   fullScript: postForm.finalScript,
-                } as any);
+                });
                 setPostModal(null);
               }}
               disabled={!postForm.youtubeUrl}
@@ -310,7 +311,7 @@ export default function LongFormPage() {
     );
   }
 
-  function ScriptCard({ script, compact }: { script: LongformScript; compact?: boolean }) {
+  function ScriptCard({ script }: { script: LongformScript; compact?: boolean }) {
     const isExpanded = expandedScript === script.id;
     const isOutlineExpanded = expandedOutline === script.id;
     const [notesValue, setNotesValue] = useState(script.notes || "");
@@ -436,7 +437,6 @@ export default function LongFormPage() {
           <div className="mb-3">
             <p className="eyebrow mb-1">Notes</p>
             <textarea
-              suppressHydrationWarning
               value={notesValue}
               onChange={e => setNotesValue(e.target.value)}
               onBlur={() => { if (notesValue !== script.notes) updateScript(script.id, { notes: notesValue }); }}
@@ -606,7 +606,7 @@ export default function LongFormPage() {
       if (!yt && !tw) return;
       setRefreshing(true);
       try {
-        const res = await fetch("/api/scrape-metrics", {
+        await fetch("/api/scrape-metrics", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ youtubeUrl: yt, tweetUrl: tw, scriptId: script.id }),
@@ -620,13 +620,13 @@ export default function LongFormPage() {
 
     function saveYt() {
       if (ytUrl !== script.youtubeUrl) {
-        updateScript(script.id, { youtubeUrl: ytUrl } as any);
+        updateScript(script.id, { youtubeUrl: ytUrl });
         scrapeAndUpdate(ytUrl, undefined);
       }
       setEditingYt(false);
     }
     function saveTw() {
-      if (twUrl !== script.tweetUrl) updateScript(script.id, { tweetUrl: twUrl } as any);
+      if (twUrl !== script.tweetUrl) updateScript(script.id, { tweetUrl: twUrl });
       setEditingTw(false);
     }
 
@@ -727,7 +727,7 @@ export default function LongFormPage() {
               <div className="space-y-1">
                 <div className="flex justify-between">
                   <span className="text-[11px] text-[var(--text-3)]">Views</span>
-                  <span className="text-[11px] text-[var(--text)] font-medium num">{(script as any).tweetViews?.toLocaleString() ?? "—"}</span>
+                  <span className="text-[11px] text-[var(--text)] font-medium num">{script.tweetViews?.toLocaleString() ?? "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[11px] text-[var(--text-3)]">Likes</span>
@@ -739,11 +739,11 @@ export default function LongFormPage() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[11px] text-[var(--text-3)]">Retweets</span>
-                  <span className="text-[11px] text-[var(--text)] font-medium num">{(script as any).tweetRetweets?.toLocaleString() ?? "—"}</span>
+                  <span className="text-[11px] text-[var(--text)] font-medium num">{script.tweetRetweets?.toLocaleString() ?? "—"}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-[11px] text-[var(--text-3)]">Replies</span>
-                  <span className="text-[11px] text-[var(--text)] font-medium num">{(script as any).tweetReplies?.toLocaleString() ?? "—"}</span>
+                  <span className="text-[11px] text-[var(--text)] font-medium num">{script.tweetReplies?.toLocaleString() ?? "—"}</span>
                 </div>
               </div>
             </div>
@@ -759,7 +759,7 @@ export default function LongFormPage() {
               >{refreshing ? "Fetching..." : "Refresh Metrics"}</button>
             )}
             <button
-              onClick={() => updateScript(script.id, { status: "filmed" } as any)}
+              onClick={() => updateScript(script.id, { status: "filmed" })}
               className={`${BTN_BASE} ${TONE.ghost}`}
             >↩ Back to Filmed</button>
           </div>
@@ -837,7 +837,6 @@ export default function LongFormPage() {
             </div>
             <div className="flex gap-2">
               <input
-                suppressHydrationWarning
                 type="text"
                 value={topicInput}
                 onChange={e => setTopicInput(e.target.value)}
@@ -846,7 +845,6 @@ export default function LongFormPage() {
                 className={`flex-1 ${INPUT} px-3 py-2 text-sm`}
               />
               <button
-                suppressHydrationWarning
                 onClick={generateScript}
                 disabled={generating || !topicInput.trim()}
                 className="btn-primary text-xs px-4 py-2 font-medium disabled:opacity-50 whitespace-nowrap"

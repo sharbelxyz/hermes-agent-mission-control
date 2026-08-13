@@ -11,7 +11,6 @@ import {
   Clock,
   Zap,
   Activity as ActivityIcon,
-  LayoutGrid,
   Pause,
   Play,
 } from "lucide-react";
@@ -63,22 +62,67 @@ interface Ev {
   createdAt: string;
 }
 
-interface Task {
-  id: string;
-  board: string;
-  title: string;
-  assignee: string | null;
-  status: string;
-  priority: number | null;
-  result: string | null;
-  syncedAt: string;
-}
-
 interface Health {
   online: boolean;
   gateway: string | null;
   detail: string | null;
   lastSeen: string | null;
+  stale?: boolean;
+  checks?: {
+    db: boolean;
+    hermesCli: boolean;
+    nativeSnapshot: boolean;
+  };
+}
+
+type GoalState = "ready" | "running" | "done" | "failed";
+
+interface NativeGoal {
+  id: string;
+  title: string;
+  state: GoalState;
+  source: "live-native" | "archive";
+  status: string | null;
+  updatedAt: string | null;
+  evidence: string[];
+  bytes: number;
+  sha256?: string;
+}
+
+interface NativeSnapshot {
+  source: {
+    mode?: "local-native" | "bridge-mirror";
+    status: "ok" | "warning" | "error";
+    message: string;
+    warnings: string[];
+    errors?: string[];
+    checkedAt: string;
+    lastSeen?: string | null;
+    stale?: boolean;
+  };
+  operatorTasks: {
+    updatedAt: string | null;
+    tasks: Array<{
+      id: string;
+      title: string;
+      status: "in_progress" | "pending" | "done" | "blocked";
+      priority: "high" | "medium" | "low";
+      updatedAt: string | null;
+    }>;
+    counts: Record<string, number>;
+  };
+  goals: {
+    live: Record<GoalState, NativeGoal[]>;
+    counts: Record<GoalState, number>;
+    current: NativeGoal | null;
+    recentFailed: NativeGoal[];
+  };
+  archive: {
+    counts: { done: number; failed: number; total: number };
+    artifact_counts: { done: number; failed: number; total: number };
+    manifestSha256: string | null;
+    recent: NativeGoal[];
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────
@@ -105,44 +149,6 @@ async function getJSON<T>(url: string): Promise<T | null> {
     return null;
   }
 }
-
-// ── Task board column order ───────────────────────────────
-const COLUMN_ORDER = [
-  "triage",
-  "todo",
-  "ready",
-  "running",
-  "review",
-  "blocked",
-  "done",
-] as const;
-
-function normStatus(s: string): string {
-  return s.toLowerCase().replace(/[\s_-]+/g, "");
-}
-function columnFor(status: string): string {
-  const k = normStatus(status);
-  for (const c of COLUMN_ORDER) if (k.includes(c)) return c;
-  if (k.includes("progress") || k.includes("doing")) return "running";
-  if (k.includes("complete")) return "done";
-  return "triage";
-}
-function columnTone(col: string): "neutral" | "up" | "down" | "warn" | "accent" {
-  if (col === "done") return "up";
-  if (col === "running") return "accent";
-  if (col === "blocked") return "down";
-  if (col === "review") return "warn";
-  return "neutral";
-}
-const COLUMN_LABEL: Record<string, string> = {
-  triage: "Triage",
-  todo: "To do",
-  ready: "Ready",
-  running: "Running",
-  review: "Review",
-  blocked: "Blocked",
-  done: "Done",
-};
 
 function levelColor(l: EvLevel): string {
   if (l === "up") return "var(--up)";
@@ -189,12 +195,13 @@ function HealthChip({ health }: { health: Health | null }) {
 }
 
 // ── Dispatch bar ──────────────────────────────────────────
-function DispatchBar({ onDone }: { onDone: () => void }) {
+function DispatchBar({ health, onDone }: { health: Health | null; onDone: () => void }) {
   const [text, setText] = useState("");
   const [side, setSide] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dispatchReady = health?.online === true;
 
   const flash = (msg: string) => {
     setToast(msg);
@@ -205,7 +212,7 @@ function DispatchBar({ onDone }: { onDone: () => void }) {
 
   const submit = async () => {
     const title = text.trim();
-    if (!title || busy) return;
+    if (!title || busy || !dispatchReady) return;
     setBusy(true);
     try {
       const r = await fetch("/api/hermes/dispatch", {
@@ -241,6 +248,7 @@ function DispatchBar({ onDone }: { onDone: () => void }) {
             if (e.key === "Enter") { e.preventDefault(); submit(); }
           }}
           placeholder="Ask or tell Hermes to do something…"
+          disabled={!dispatchReady || busy}
           className="flex-1 min-w-0 bg-transparent text-[14px] text-[var(--text)] placeholder:text-[var(--text-3)] px-3.5 py-2.5 rounded-[10px] border border-[var(--line)] focus:border-[color-mix(in_srgb,var(--accent)_45%,transparent)] outline-none transition-colors"
         />
         <div className="flex items-center gap-3 shrink-0">
@@ -268,7 +276,7 @@ function DispatchBar({ onDone }: { onDone: () => void }) {
               side-effecting?
             </span>
           </button>
-          <Button variant="primary" onClick={submit} disabled={busy || !text.trim()}>
+          <Button variant="primary" onClick={submit} disabled={!dispatchReady || busy || !text.trim()}>
             <Send className="w-3.5 h-3.5" />
             Dispatch
           </Button>
@@ -278,6 +286,11 @@ function DispatchBar({ onDone }: { onDone: () => void }) {
         <p className="mt-3 text-[12.5px] text-[var(--text-2)] flex items-center gap-1.5">
           <Check className="w-3.5 h-3.5" style={{ color: "var(--up)" }} />
           {toast}
+        </p>
+      )}
+      {!dispatchReady && (
+        <p className="mt-3 text-[12px] text-[var(--warn)]">
+          Dispatch disabled until bridge heartbeat proves DB, Hermes CLI, and native snapshot freshness.
         </p>
       )}
     </Panel>
@@ -417,93 +430,145 @@ function InboxCard({ req, onAction }: { req: Req; onAction: () => void }) {
   );
 }
 
-// ── Task board ────────────────────────────────────────────
-function TaskBoard({
-  tasks,
-  total,
-  lastSync,
-}: {
-  tasks: Task[];
-  total: number;
-  lastSync: string | null;
-}) {
-  const groups: Record<string, Task[]> = {};
-  for (const t of tasks) {
-    const col = columnFor(t.status);
-    (groups[col] ||= []).push(t);
-  }
-  const cols = COLUMN_ORDER.filter((c) => groups[c]?.length);
+function fmtBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${bytes} B`;
+}
+
+const NATIVE_GOAL_LABEL: Record<GoalState, string> = {
+  running: "Running now",
+  ready: "Ready",
+  failed: "Failed",
+  done: "Done",
+};
+
+function NativeGoalCard({ goal }: { goal: NativeGoal }) {
+  const tone = goal.state === "running" ? "accent" : goal.state === "failed" ? "down" : goal.state === "done" ? "up" : "neutral";
+  return (
+    <div className="rounded-[10px] border border-[var(--line)] bg-[var(--surface-1)] p-3">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-[13px] font-medium leading-snug text-[var(--text)]">{goal.title}</p>
+        <Pill tone={tone} className="!py-0.5 !text-[10px]">{goal.status ?? goal.state}</Pill>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3 num text-[10.5px] text-[var(--text-3)]">
+        <span>{fmtBytes(goal.bytes)}</span>
+        <span>{timeAgo(goal.updatedAt)}</span>
+        {goal.sha256 && <span>sha {goal.sha256.slice(0, 10)}</span>}
+      </div>
+      {goal.evidence.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {goal.evidence.map((item) => (
+            <span key={item} className="rounded-full border border-[var(--line)] px-2 py-0.5 text-[10.5px] text-[var(--text-3)]">
+              {item}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NativeWorkPanel({ snapshot }: { snapshot: NativeSnapshot | null }) {
+  const live = snapshot?.goals.live ?? { ready: [], running: [], done: [], failed: [] };
+  const operatorTasks = snapshot?.operatorTasks.tasks ?? [];
+  const sourceLabel = snapshot?.source.mode === "bridge-mirror" ? "bridge mirror" : "local native";
+  const sourceMessage = snapshot?.source.errors?.[0] ?? snapshot?.source.warnings[0] ?? null;
 
   return (
     <>
       <SectionHeader
-        label="Task board"
-        title="Hermes kanban"
+        label="Native work state"
+        title="Goals, operator tasks, archive"
         action={
           <div className="flex items-center gap-3">
-            <span className="num text-[12px] text-[var(--text-2)]">{total} total</span>
+            <Pill tone={snapshot?.source.status === "ok" ? "up" : "warn"}>
+              {snapshot?.source.stale ? "stale " : ""}{sourceLabel}
+            </Pill>
             <span className="num text-[11px] text-[var(--text-3)]">
-              synced {timeAgo(lastSync)}
+              archive {snapshot?.archive.counts.total ?? 0}
             </span>
           </div>
         }
       />
-      {tasks.length === 0 ? (
-        <Panel className="p-2">
-          <EmptyState
-            icon={<LayoutGrid className="w-6 h-6" />}
-            title="No tasks on the board"
-            hint="Dispatched work and synced kanban cards will show up here."
-          />
+
+      {sourceMessage ? (
+        <Panel className="mb-4 p-4">
+          <p className="text-[12.5px] text-[var(--text-2)]">
+            {sourceMessage}
+          </p>
         </Panel>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {cols.map((col) => {
-            const tone = columnTone(col);
-            return (
-              <div key={col} className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between px-1">
-                  <Eyebrow>{COLUMN_LABEL[col]}</Eyebrow>
-                  <span className="num text-[11px] text-[var(--text-3)]">
-                    {groups[col].length}
-                  </span>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(320px,0.7fr)]">
+        <Panel className="p-4">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+            {(["running", "ready", "failed", "done"] as const).map((state) => (
+              <div key={state} className="min-h-44 rounded-[10px] border border-[var(--line)] bg-[var(--surface-2)] p-3">
+                <div className="mb-3 flex items-center justify-between gap-2">
+                  <Eyebrow>{NATIVE_GOAL_LABEL[state]}</Eyebrow>
+                  <span className="num text-[11px] text-[var(--text-3)]">{live[state].length}</span>
                 </div>
-                <div className="flex flex-col gap-2.5">
-                  {groups[col]
-                    .sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0))
-                    .map((t) => (
-                      <div
-                        key={t.id}
-                        className="panel p-3.5"
-                        style={{
-                          borderLeft: `2px solid color-mix(in srgb, ${
-                            tone === "neutral" ? "var(--text-3)" : `var(--${tone})`
-                          } 55%, transparent)`,
-                        }}
-                      >
-                        <p className="text-[13px] text-[var(--text)] leading-snug line-clamp-2">
-                          {t.title}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2.5">
-                          {t.assignee && (
-                            <span className="num text-[10.5px] text-[var(--text-3)]">
-                              {t.assignee}
-                            </span>
-                          )}
-                          {t.priority != null && t.priority > 0 && (
-                            <span className="num text-[10.5px] text-[var(--text-3)] ml-auto">
-                              P{t.priority}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                </div>
+                {live[state].length === 0 ? (
+                  <p className="py-8 text-center text-[12px] text-[var(--text-4)]">No live native goals</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {live[state].slice(0, 4).map((goal) => <NativeGoalCard key={goal.id} goal={goal} />)}
+                  </div>
+                )}
               </div>
-            );
-          })}
+            ))}
+          </div>
+        </Panel>
+
+        <div className="grid grid-cols-1 gap-4">
+          <Panel className="p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Eyebrow>Operator tasks</Eyebrow>
+                <h3 className="mt-1 text-[16px] font-semibold text-[var(--text)]">Current registry</h3>
+              </div>
+              <span className="num text-[18px] font-semibold text-[var(--text)]">{operatorTasks.length}</span>
+            </div>
+            <div className="mt-4 divide-y divide-[var(--line)]">
+              {operatorTasks.slice(0, 6).map((task) => (
+                <div key={task.id} className="py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-[12.5px] leading-snug text-[var(--text-2)]">{task.title}</p>
+                    <Pill tone={task.status === "blocked" ? "down" : task.status === "in_progress" ? "accent" : task.status === "done" ? "up" : "neutral"} className="shrink-0 !py-0.5 !text-[10px]">
+                      {task.status.replace("_", " ")}
+                    </Pill>
+                  </div>
+                </div>
+              ))}
+              {operatorTasks.length === 0 && (
+                <p className="py-8 text-center text-[12.5px] text-[var(--text-3)]">No operator tasks</p>
+              )}
+            </div>
+          </Panel>
+
+          <Panel className="p-5">
+            <Eyebrow>Historical archive</Eyebrow>
+            <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+              <div>
+                <div className="num text-[22px] font-semibold text-[var(--up)]">{snapshot?.archive.counts.done ?? 0}</div>
+                <div className="eyebrow mt-1">done</div>
+              </div>
+              <div>
+                <div className="num text-[22px] font-semibold text-[var(--down)]">{snapshot?.archive.counts.failed ?? 0}</div>
+                <div className="eyebrow mt-1">failed</div>
+              </div>
+              <div>
+                <div className="num text-[22px] font-semibold text-[var(--text)]">{snapshot?.archive.counts.total ?? 0}</div>
+                <div className="eyebrow mt-1">total</div>
+              </div>
+            </div>
+            <p className="mt-3 text-center text-[11.5px] text-[var(--text-3)]">
+              evidence artifacts <span className="num">{snapshot?.archive.artifact_counts.total ?? 0}</span>
+            </p>
+          </Panel>
         </div>
-      )}
+      </div>
     </>
   );
 }
@@ -738,24 +803,20 @@ export default function HermesPage() {
   const [inbox, setInbox] = useState<Req[]>([]);
   const [pending, setPending] = useState(0);
   const [events, setEvents] = useState<Ev[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [taskTotal, setTaskTotal] = useState(0);
-  const [taskSync, setTaskSync] = useState<string | null>(null);
+  const [nativeSnapshot, setNativeSnapshot] = useState<NativeSnapshot | null>(null);
   const [jobs, setJobs] = useState<CronJob[]>([]);
   const [cronSync, setCronSync] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [h, reqs, act, tk, cr] = await Promise.all([
+    const [h, reqs, act, native, cr] = await Promise.all([
       getJSON<Health>("/api/hermes/health"),
       getJSON<{ requests: Req[]; pending: number }>(
         "/api/hermes/requests?status=awaiting_approval&take=50"
       ),
       getJSON<{ events: Ev[] }>("/api/hermes/activity?take=40"),
-      getJSON<{ tasks: Task[]; counts: Record<string, number>; total: number; lastSync: string }>(
-        "/api/hermes/tasks"
-      ),
+      getJSON<NativeSnapshot>("/api/hermes/native"),
       getJSON<{ jobs: CronJob[]; syncedAt: string }>("/api/hermes/crons"),
     ]);
     if (h) setHealth(h);
@@ -764,11 +825,7 @@ export default function HermesPage() {
       setPending(reqs.pending ?? reqs.requests?.length ?? 0);
     }
     if (act) setEvents(act.events ?? []);
-    if (tk) {
-      setTasks(tk.tasks ?? []);
-      setTaskTotal(tk.total ?? tk.tasks?.length ?? 0);
-      setTaskSync(tk.lastSync ?? null);
-    }
+    if (native) setNativeSnapshot(native);
     if (cr) {
       setJobs(cr.jobs ?? []);
       setCronSync(cr.syncedAt ?? null);
@@ -777,9 +834,14 @@ export default function HermesPage() {
   }, []);
 
   useEffect(() => {
-    load();
+    const firstLoad = setTimeout(() => {
+      void load();
+    }, 0);
     const iv = setInterval(load, 8000);
-    return () => clearInterval(iv);
+    return () => {
+      clearTimeout(firstLoad);
+      clearInterval(iv);
+    };
   }, [load]);
 
   const manualRefresh = async () => {
@@ -814,7 +876,7 @@ export default function HermesPage() {
 
         {/* Dispatch */}
         <div className="hq-rise">
-          <DispatchBar onDone={load} />
+          <DispatchBar health={health} onDone={load} />
         </div>
 
         {/* Dispatches — what you've sent Hermes + live status/results */}
@@ -857,11 +919,11 @@ export default function HermesPage() {
           )}
         </section>
 
-        {/* Task board */}
+        {/* Native work state */}
         <section className="mt-12">
           {!loaded ? (
             <>
-              <SectionHeader label="Task board" title="Hermes kanban" />
+              <SectionHeader label="Native work state" title="Goals, operator tasks, archive" />
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Skeleton className="h-48" />
                 <Skeleton className="h-48" />
@@ -869,7 +931,7 @@ export default function HermesPage() {
               </div>
             </>
           ) : (
-            <TaskBoard tasks={tasks} total={taskTotal} lastSync={taskSync} />
+            <NativeWorkPanel snapshot={nativeSnapshot} />
           )}
         </section>
 

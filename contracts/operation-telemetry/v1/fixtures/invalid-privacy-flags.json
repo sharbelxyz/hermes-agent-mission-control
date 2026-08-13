@@ -1,0 +1,23 @@
+{
+  "fixture": "invalid-privacy-flags",
+  "records": [
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "operation_start",
+      "operation_id": "op_privacy_flags",
+      "attempt_id": "att_privacy_flags_1",
+      "span_id": "span_privacy_flags_start",
+      "idempotency_key": "sha256:9090909090909090909090909090909090909090909090909090909090909090",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "plan",
+      "operation_type": "planner",
+      "operation_name": "privacy_flags",
+      "status": "started",
+      "started_at": "2026-08-05T00:15:00.000Z",
+      "usage": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "none", "amount_usd": 0 },
+      "privacy": { "metadata_only": false, "content_recorded": true, "tool_io_recorded": true }
+    }
+  ]
+}

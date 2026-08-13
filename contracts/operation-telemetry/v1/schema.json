@@ -1,0 +1,398 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.local/contracts/operation-telemetry/v1/schema.json",
+  "title": "Mission Control Operation Telemetry Record",
+  "description": "Strict metadata-only mc.operation.v1 start, terminal, and export-state records.",
+  "oneOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_kind",
+        "operation_id",
+        "attempt_id",
+        "span_id",
+        "idempotency_key",
+        "goal_id",
+        "run_id",
+        "stage",
+        "operation_type",
+        "operation_name",
+        "status",
+        "started_at",
+        "usage",
+        "cost",
+        "privacy"
+      ],
+      "properties": {
+        "schema_version": { "const": "mc.operation.v1" },
+        "record_kind": { "const": "operation_start" },
+        "operation_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "attempt_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "span_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "parent_span_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "retry_of": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "idempotency_key": { "type": "string", "minLength": 71, "maxLength": 71, "pattern": "^sha256:[a-f0-9]{64}$" },
+        "goal_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "run_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "stage": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "operation_type": { "enum": ["planner", "coder", "reviewer", "model", "tool", "export"] },
+        "operation_name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "const": "started" },
+        "started_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens", "total_tokens", "cache_read_tokens", "cache_write_tokens"],
+          "properties": {
+            "input_tokens": { "type": "integer", "minimum": 0 },
+            "output_tokens": { "type": "integer", "minimum": 0 },
+            "total_tokens": { "type": "integer", "minimum": 0 },
+            "cache_read_tokens": { "type": "integer", "minimum": 0 },
+            "cache_write_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "amount_usd"],
+          "allOf": [
+            {
+              "if": { "required": ["basis"], "properties": { "basis": { "const": "none" } } },
+              "then": { "properties": { "amount_usd": { "const": 0 } } }
+            }
+          ],
+          "properties": {
+            "basis": { "enum": ["none", "reported", "estimated"] },
+            "amount_usd": { "type": "number", "minimum": 0 }
+          }
+        },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metadata_only", "content_recorded", "tool_io_recorded"],
+          "properties": {
+            "metadata_only": { "const": true },
+            "content_recorded": { "const": false },
+            "tool_io_recorded": { "const": false }
+          }
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_kind",
+        "operation_id",
+        "attempt_id",
+        "span_id",
+        "idempotency_key",
+        "goal_id",
+        "run_id",
+        "stage",
+        "operation_type",
+        "operation_name",
+        "status",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "usage",
+        "cost",
+        "privacy"
+      ],
+      "properties": {
+        "schema_version": { "const": "mc.operation.v1" },
+        "record_kind": { "const": "operation_terminal" },
+        "operation_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "attempt_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "span_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "parent_span_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "retry_of": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "idempotency_key": { "type": "string", "minLength": 71, "maxLength": 71, "pattern": "^sha256:[a-f0-9]{64}$" },
+        "goal_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "run_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "stage": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "operation_type": { "enum": ["planner", "coder", "reviewer", "model", "tool", "export"] },
+        "operation_name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "enum": ["succeeded", "failed", "blocked", "cancelled"] },
+        "started_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "ended_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens", "total_tokens", "cache_read_tokens", "cache_write_tokens"],
+          "properties": {
+            "input_tokens": { "type": "integer", "minimum": 0 },
+            "output_tokens": { "type": "integer", "minimum": 0 },
+            "total_tokens": { "type": "integer", "minimum": 0 },
+            "cache_read_tokens": { "type": "integer", "minimum": 0 },
+            "cache_write_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "amount_usd"],
+          "allOf": [
+            {
+              "if": { "required": ["basis"], "properties": { "basis": { "const": "none" } } },
+              "then": { "properties": { "amount_usd": { "const": 0 } } }
+            }
+          ],
+          "properties": {
+            "basis": { "enum": ["none", "reported", "estimated"] },
+            "amount_usd": { "type": "number", "minimum": 0 }
+          }
+        },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metadata_only", "content_recorded", "tool_io_recorded"],
+          "properties": {
+            "metadata_only": { "const": true },
+            "content_recorded": { "const": false },
+            "tool_io_recorded": { "const": false }
+          }
+        },
+        "tool": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tool_signature_hash", "argument_bytes", "result_bytes", "failure_class"],
+          "properties": {
+            "tool_signature_hash": { "type": "string", "minLength": 71, "maxLength": 71, "pattern": "^sha256:[a-f0-9]{64}$" },
+            "argument_bytes": { "type": "integer", "minimum": 0 },
+            "result_bytes": { "type": "integer", "minimum": 0 },
+            "failure_class": { "enum": ["none", "blocked", "cancelled", "provider_error", "schema_error", "network_outage", "tool_error"] }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["operation_type"],
+            "properties": { "operation_type": { "const": "tool" } }
+          },
+          "then": { "required": ["tool"] }
+        }
+      ]
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "record_kind",
+        "operation_id",
+        "attempt_id",
+        "span_id",
+        "idempotency_key",
+        "goal_id",
+        "run_id",
+        "stage",
+        "operation_type",
+        "operation_name",
+        "status",
+        "started_at",
+        "ended_at",
+        "duration_ms",
+        "usage",
+        "cost",
+        "privacy",
+        "export"
+      ],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": ["status", "export"],
+              "properties": {
+                "status": { "const": "local_only" },
+                "export": {
+                  "required": ["state", "upstream_recorded"],
+                  "properties": {
+                    "state": { "const": "local_only" },
+                    "upstream_recorded": { "const": false }
+                  }
+                }
+              }
+            },
+            {
+              "required": ["status", "export"],
+              "properties": {
+                "status": { "const": "dual_written" },
+                "export": {
+                  "required": ["state", "upstream_recorded"],
+                  "properties": {
+                    "state": { "const": "dual_written" },
+                    "upstream_recorded": { "const": true }
+                  }
+                }
+              }
+            },
+            {
+              "required": ["status", "retry_of", "export"],
+              "properties": {
+                "status": { "const": "replayed" },
+                "export": {
+                  "required": ["state", "upstream_recorded", "replay_count"],
+                  "properties": {
+                    "state": { "const": "replayed" },
+                    "upstream_recorded": { "const": true },
+                    "replay_count": { "type": "integer", "minimum": 1 }
+                  }
+                }
+              }
+            },
+            {
+              "required": ["status", "export"],
+              "properties": {
+                "status": { "const": "duplicate" },
+                "export": {
+                  "required": ["state", "upstream_recorded", "duplicate_of_idempotency_key"],
+                  "properties": {
+                    "state": { "const": "duplicate" },
+                    "upstream_recorded": { "const": false }
+                  }
+                }
+              }
+            },
+            {
+              "required": ["status", "export"],
+              "properties": {
+                "status": { "const": "partial_upload" },
+                "export": {
+                  "required": ["state", "upstream_recorded"],
+                  "properties": {
+                    "state": { "const": "partial_upload" },
+                    "upstream_recorded": { "const": true }
+                  }
+                }
+              }
+            },
+            {
+              "required": ["status", "export"],
+              "properties": {
+                "status": { "const": "schema_mismatch" },
+                "export": {
+                  "required": ["state", "upstream_recorded", "mismatch_schema_version"],
+                  "properties": {
+                    "state": { "const": "schema_mismatch" },
+                    "upstream_recorded": { "const": false },
+                    "mismatch_schema_version": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 128,
+                      "not": { "const": "mc.operation.v1" }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "properties": {
+        "schema_version": { "const": "mc.operation.v1" },
+        "record_kind": { "const": "export_state" },
+        "operation_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "attempt_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "span_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "parent_span_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "retry_of": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "idempotency_key": { "type": "string", "minLength": 71, "maxLength": 71, "pattern": "^sha256:[a-f0-9]{64}$" },
+        "goal_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "run_id": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$" },
+        "stage": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "operation_type": { "enum": ["planner", "coder", "reviewer", "model", "tool", "export"] },
+        "operation_name": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "status": { "enum": ["local_only", "dual_written", "replayed", "duplicate", "partial_upload", "schema_mismatch"] },
+        "started_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "ended_at": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$" },
+        "duration_ms": { "type": "integer", "minimum": 0 },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "usage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["input_tokens", "output_tokens", "total_tokens", "cache_read_tokens", "cache_write_tokens"],
+          "properties": {
+            "input_tokens": { "type": "integer", "minimum": 0 },
+            "output_tokens": { "type": "integer", "minimum": 0 },
+            "total_tokens": { "type": "integer", "minimum": 0 },
+            "cache_read_tokens": { "type": "integer", "minimum": 0 },
+            "cache_write_tokens": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "cost": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["basis", "amount_usd"],
+          "allOf": [
+            {
+              "if": { "required": ["basis"], "properties": { "basis": { "const": "none" } } },
+              "then": { "properties": { "amount_usd": { "const": 0 } } }
+            }
+          ],
+          "properties": {
+            "basis": { "enum": ["none", "reported", "estimated"] },
+            "amount_usd": { "type": "number", "minimum": 0 }
+          }
+        },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["metadata_only", "content_recorded", "tool_io_recorded"],
+          "properties": {
+            "metadata_only": { "const": true },
+            "content_recorded": { "const": false },
+            "tool_io_recorded": { "const": false }
+          }
+        },
+        "export": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "local_recorded", "upstream_recorded"],
+          "allOf": [
+            {
+              "if": { "required": ["state"], "properties": { "state": { "const": "replayed" } } },
+              "then": {
+                "required": ["replay_count"],
+                "properties": { "replay_count": { "type": "integer", "minimum": 1 } }
+              },
+              "else": { "properties": { "replay_count": { "const": 0 } } }
+            },
+            {
+              "if": { "required": ["state"], "properties": { "state": { "const": "duplicate" } } },
+              "then": { "required": ["duplicate_of_idempotency_key"] },
+              "else": { "not": { "required": ["duplicate_of_idempotency_key"] } }
+            },
+            {
+              "if": { "required": ["state"], "properties": { "state": { "const": "schema_mismatch" } } },
+              "then": {
+                "required": ["mismatch_schema_version"],
+                "properties": { "mismatch_schema_version": { "not": { "const": "mc.operation.v1" } } }
+              },
+              "else": { "not": { "required": ["mismatch_schema_version"] } }
+            }
+          ],
+          "properties": {
+            "state": { "enum": ["local_only", "dual_written", "replayed", "duplicate", "partial_upload", "schema_mismatch"] },
+            "local_recorded": { "type": "boolean" },
+            "upstream_recorded": { "type": "boolean" },
+            "replay_count": { "type": "integer", "minimum": 0 },
+            "duplicate_of_idempotency_key": { "type": "string", "minLength": 71, "maxLength": 71, "pattern": "^sha256:[a-f0-9]{64}$" },
+            "mismatch_schema_version": { "type": "string", "minLength": 1, "maxLength": 128 }
+          }
+        }
+      }
+    }
+  ]
+}

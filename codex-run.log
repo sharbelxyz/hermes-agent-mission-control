@@ -1,0 +1,1536 @@
+OpenAI Codex v0.142.5
+--------
+workdir: /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: danger-full-access
+reasoning effort: medium
+reasoning summaries: none
+session id: 019ff58b-fde4-7e10-91c4-b2a2484e2ff0
+--------
+user
+# Mission Control Reliability Fixes — Codex Brief
+
+**Objective:** Ship 5 P0 fixes for Mission Control + Floor + Observability pages with tests and evidence.
+
+**Branch:** `fix/mission-control-reliability` (created from main)
+
+**Model:** Prefer `gpt-4o-mini` or equivalent low-cost model for implementation
+
+---
+
+## Fix 1: Floor Queue Truth Mismatch
+
+**File:** `src/app/floor/page.tsx`
+
+**Issue:** UI count badges (queued, running, done, failed tabs) don't match `/api/runs` truth. Tab totals must be computed from the dataset shown, not hardcoded.
+
+**Current code pattern:**
+```typescript
+// BROKEN: hardcoded counts
+<Pill>queued: 5</Pill>  // May be wrong
+<Pill>running: 3</Pill> // May be wrong
+<Pill>done: 12</Pill>   // May be wrong
+```
+
+**Required change:**
+- Extract tab count logic into a helper function `computeTabCounts(runs: RunIndex[])`
+- Return object: `{ queued: number, running: number, done: number, failed: number }`
+- Compute counts from `runs` array:
+  - `queued`: status === 'queued'
+  - `running`: status === 'running'
+  - `done`: status === 'done'
+  - `failed`: status === 'failed'
+- Pass computed counts to tab rendering
+- **Verify:** Tab totals must always sum to `runs.length`
+
+---
+
+## Fix 2: Running Badge Semantics (traceRunning vs liveController)
+
+**File:** `src/app/floor/page.tsx`
+
+**Issue:** Badge shows "live" when `data.running` is true, but doesn't distinguish between:
+- `traceRunning=true, liveController=false` (row is NOT actually running, just tracing)
+- `traceRunning=true, liveController=true` (row IS actually running)
+
+**Current code:**
+```typescript
+<Pill tone={data.running ? "accent" : "neutral"}>
+  {data.running ? "live" : "seen"}
+</Pill>
+```
+
+**Required change:**
+- Add logic: A row is "live" (accent badge) **ONLY if `liveController === true`**
+- `traceRunning=true` alone does NOT make it "live"
+- Update Pill rendering:
+  ```typescript
+  const isLive = data.liveController === true;
+  <Pill tone={isLive ? "accent" : "neutral"}>
+    {isLive ? "live" : "seen"}
+  </Pill>
+  ```
+- Update any other badge/status indicators to use same logic
+
+**Verify:** Search for all references to `data.running` in badge/status context; replace with `data.liveController === true` for visual "live" state
+
+---
+
+## Fix 3: Empty State for Graph
+
+**File:** `src/app/floor/page.tsx`
+
+**Issue:** When a selected run's graph has no substantive nodes/files, the graph canvas appears broken/empty instead of showing a clear empty state message.
+
+**Current code:** Graph renders with no fallback for empty data.
+
+**Required change:**
+- After graph data is loaded, check: `graph.nodes.length === 0 || !graph.hasSubstantiveContent`
+- If empty, render:
+  ```typescript
+  <EmptyState
+    icon={<Info />}
+    title="No graph data"
+    message="This run has not yet produced a graph. Check back after the run progresses."
+  />
+  ```
+- Prevent graph canvas from rendering when no nodes exist
+- Style empty state to match surrounding panel
+
+**Location:** Find where graph is rendered in the selected-run detail view, add conditional before `<ReactFlow />` component
+
+---
+
+## Fix 4: Observability Page Resilience
+
+**File:** `src/app/observability/page.tsx` AND `src/app/api/hermes/observability/route.ts`
+
+**Issue:** Page fetch from `/api/hermes/observability` is fragile:
+- No explicit error state display
+- No stale data fallback
+- Blank/zero display on network failure or API instability
+- 24h/7d window failures cascade silently
+
+**Current code (route.ts):**
+```typescript
+const payload = await collectHermesObservability(window);
+cache.set(window, { expiresAt: now + CACHE_MS, payload });
+return NextResponse.json(payload);
+```
+
+**No error handling in fetch or cache fallback.**
+
+**Required changes:**
+
+### 4a. API Route (`src/app/api/hermes/observability/route.ts`)
+
+- Wrap `collectHermesObservability()` in try-catch
+- On error:
+  - Return stale cached payload if available (even if expired)
+  - If no cache, return error response with `{ error: "...", lastGoodSnapshot: {...} }`
+- Add timestamp to all cache entries: `{ expiresAt, payload, cachedAt: Date.now() }`
+- Return cache timestamp in response headers: `X-Cache-Age: <ms>`
+
+### 4b. Observability Page (`src/app/observability/page.tsx`)
+
+- Update `getJSON()` to return tuple: `[data, error, cachedAt?]`
+- Track state:
+  ```typescript
+  const [data, setData] = useState<HermesObservability | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dataAge, setDataAge] = useState<number | null>(null);
+  const [isStale, setIsStale] = useState(false);
+  ```
+- On fetch:
+  - If error: display warning banner "Data is stale (last updated X min ago)" with retry button
+  - If success but old (> 10 min): display info banner "Last updated X min ago"
+  - Always show current data even if stale, with visual indicator
+- Test both 24h and 7d windows
+- Add explicit error state rendering: `{error && <EmptyState icon={<AlertTriangle />} ... />}`
+
+**Verify:**
+- Kill API endpoint, refresh page → shows stale data + warning
+- API returns error → shows last-good snapshot + error banner
+- Data is fresh → no warning, normal display
+
+---
+
+## Fix 5: Add Tests
+
+**Files:** `tests/` directory
+
+**Add test file: `tests/mission-control-fixes.test.ts`**
+
+### Test Suite 1: Floor Tab Counts
+```typescript
+describe("Floor tab count logic", () => {
+  test("computeTabCounts sums to total runs", () => {
+    // Create sample RunIndex array
+    // Call computeTabCounts()
+    // Assert counts.queued + counts.running + counts.done + counts.failed === runs.length
+  });
+  
+  test("computeTabCounts filters by status correctly", () => {
+    // Verify queued count matches status === 'queued'
+    // Verify running count matches status === 'running'
+    // etc.
+  });
+});
+```
+
+### Test Suite 2: Running Badge Semantics
+```typescript
+describe("Running badge semantics", () => {
+  test("liveController=true shows live badge", () => {
+    // Render row with liveController=true
+    // Assert Pill has tone="accent" and displays "live"
+  });
+  
+  test("liveController=false shows seen badge even if traceRunning=true", () => {
+    // Render row with traceRunning=true, liveController=false
+    // Assert Pill has tone="neutral" and displays "seen"
+  });
+  
+  test("traceRunning=true alone does not show live badge", () => {
+    // Render row with traceRunning=true, liveController=false
+    // Assert NOT "live"
+  });
+});
+```
+
+### Test Suite 3: Observability Fetch Resilience
+```typescript
+describe("Observability fetch resilience", () => {
+  test("stale data is returned on API error", () => {
+    // Mock API to return error
+    // Verify cached data is used
+    // Verify error state is set
+  });
+  
+  test("error state displays warning banner", () => {
+    // Mock fetch failure
+    // Render observability page
+    // Assert warning banner appears with "Data is stale"
+  });
+  
+  test("fresh data shows no warning", () => {
+    // Mock successful API response
+    // Verify no warning banner
+  });
+});
+```
+
+---
+
+## Execution Plan
+
+1. **Fix 1 & 2 together** (Floor logic): 30 min
+   - Extract `computeTabCounts()` helper
+   - Update badge logic to use `liveController` only
+   - Verify no regressions in other status indicators
+
+2. **Fix 3** (Empty state): 15 min
+   - Add condition before ReactFlow render
+   - Add EmptyState component with clear message
+
+3. **Fix 4** (Observability resilience): 45 min
+   - Add error handling to route
+   - Add stale data fallback in cache
+   - Update page component fetch logic + state
+   - Add warning banners
+
+4. **Fix 5** (Tests): 30 min
+   - Create test file
+   - Write tests for each fix
+   - Verify all pass
+
+5. **Verify**: 15 min
+   - Run `npm run build` and `npm run typecheck`
+   - Run test suite
+   - Manual smoke test of each page
+   - Check git diff for scope
+
+---
+
+## Constraints
+
+- ✅ Scope: Mission Control product repo only
+- ✅ No secrets changes
+- ✅ No infra/DB changes
+- ✅ Tight scope to the 5 fixes
+- ✅ Feature branch: `fix/mission-control-reliability`
+- ✅ Type-safe TypeScript
+- ✅ All tests pass
+- ✅ Build succeeds
+
+---
+
+## Success Criteria
+
+1. **Tab counts** always match data truth
+2. **Running badges** only show "live" when `liveController === true`
+3. **Graph empty state** displays clear message when no nodes
+4. **Observability page** never goes blank on API error; shows stale data + warning
+5. **All tests pass** (5+ test cases covering fixes 1-4)
+6. **Build/typecheck/tests all pass**
+7. **PR ready** with summary and evidence
+
+---
+
+## After Completion
+
+- Open PR with this summary in body
+- Run Codex review gate (separate session)
+- Merge after review approval
+- Verify in production/preview
+
+**Task output will include:**
+- Repo path, branch, commit SHA
+- Exact files changed (git diff)
+- Test/build commands and pass results
+- PR URL
+- Production/preview verification link
+
+2026-08-12T10:37:01.885263Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when Auth(AuthorizationRequired)
+hook: SessionStart
+hook: SessionStart
+hook: SessionStart
+hook: SessionStart Failed
+hook: SessionStart Failed
+hook: SessionStart Failed
+codex
+I’ll use the Next.js skill for the app/router conventions, then inspect the existing floor, observability, and test setup before editing.
+exec
+/bin/bash -lc "sed -n '1,220p' /home/phillip_downs/.codex/plugins/cache/plugins-cli/vercel-plugin/0.44.0/skills/nextjs/SKILL.md" in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+---
+name: nextjs
+description: Next.js App Router expert guidance. Use when building, debugging, or architecting Next.js applications — routing, Server Components, Server Actions, Cache Components, layouts, middleware/proxy, data fetching, rendering strategies, and deployment on Vercel.
+metadata:
+  priority: 5
+  docs:
+    - "https://nextjs.org/docs"
+    - "https://nextjs.org/docs/app"
+  sitemap: "https://nextjs.org/sitemap.xml"
+  pathPatterns:
+    - 'next.config.*'
+    - 'next-env.d.ts'
+    - 'app/**'
+    - 'pages/**'
+    - 'src/app/**'
+    - 'src/pages/**'
+    - 'tailwind.config.*'
+    - 'postcss.config.*'
+    - 'tsconfig.json'
+    - 'tsconfig.*.json'
+    - 'apps/*/app/**'
+    - 'apps/*/pages/**'
+    - 'apps/*/src/app/**'
+    - 'apps/*/src/pages/**'
+    - 'apps/*/next.config.*'
+  bashPatterns:
+    - '\bnext\s+(dev|build|start|lint)\b'
+    - '\bnext\s+experimental-analyze\b'
+    - '\bnpx\s+create-next-app\b'
+    - '\bbunx\s+create-next-app\b'
+    - '\bnpm\s+run\s+(dev|build|start)\b'
+    - '\bpnpm\s+(dev|build)\b'
+    - '\bbun\s+run\s+(dev|build)\b'
+  promptSignals:
+    phrases:
+      - "next.js"
+      - "nextjs"
+      - "app router"
+      - "server component"
+      - "server action"
+    allOf:
+      - [middleware, next]
+      - [layout, route]
+    anyOf:
+      - "pages router"
+      - "getserversideprops"
+      - "use server"
+    noneOf: []
+    minScore: 6
+validate:
+  -
+    pattern: export.*getServerSideProps
+    message: 'getServerSideProps is removed in App Router — use server components or route handlers'
+    severity: error
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from Pages Router getServerSideProps to App Router server components with async data fetching.'
+  -
+    pattern: getServerSideProps
+    message: 'getServerSideProps is a Pages Router pattern — migrate to App Router server components'
+    severity: warn
+  -
+    pattern: export.*getStaticProps
+    message: 'getStaticProps is removed in App Router — use generateStaticParams + server components instead'
+    severity: error
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from Pages Router getStaticProps to App Router generateStaticParams with server components.'
+  -
+    pattern: getStaticProps
+    message: 'getStaticProps is a Pages Router pattern — migrate to App Router generateStaticParams + server components'
+    severity: warn
+  -
+    pattern: from\s+['"]next/router['"]
+    message: 'next/router is Pages Router only — use next/navigation for App Router'
+    severity: error
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from next/router to next/navigation with useRouter, usePathname, useSearchParams hooks.'
+  -
+    pattern: (useState|useEffect)
+    message: 'React hooks require "use client" directive — add it at the top of client components'
+    severity: warn
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: from\s+['"]next/head['"]
+    message: 'next/head is Pages Router — use export const metadata or generateMetadata() in App Router. Run Skill(nextjs) for metadata API guidance.'
+    severity: error
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from next/head to the App Router metadata API (export const metadata / generateMetadata()).'
+    skipIfFileContains: export\s+(const\s+)?metadata|generateMetadata
+  -
+    pattern: export\s+(default\s+)?function\s+middleware
+    message: 'middleware() is renamed to proxy() in Next.js 16 — rename the function and the file to proxy.ts. Run Skill(routing-middleware) for proxy.ts migration guidance.'
+    severity: recommended
+    upgradeToSkill: routing-middleware
+    upgradeWhy: 'Guides migration from middleware.ts to proxy.ts with correct file placement, runtime config, and request interception patterns.'
+  -
+    pattern: revalidateTag\(\s*['"][^'"]+['"]\s*\)
+    message: 'Single-arg revalidateTag(tag) is deprecated in Next.js 16 — pass a cacheLife profile: revalidateTag(tag, "max")'
+    severity: recommended
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from single-arg revalidateTag to the Next.js 16 two-arg API with cacheLife profiles.'
+  -
+    pattern: '\bcacheHandler\s*:'
+    message: 'Singular cacheHandler is deprecated in Next.js 16 — use cacheHandlers (plural) with per-type handlers'
+    severity: recommended
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from singular cacheHandler to Next.js 16 cacheHandlers (plural) with per-type handler config.'
+  -
+    pattern: useRef\(\s*\)
+    message: 'useRef() requires an initial value in React 19 — use useRef(null) or useRef(0)'
+    severity: error
+  -
+    pattern: next\s+export
+    message: 'next export was removed — use output: "export" in next.config.js for static export'
+    severity: error
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from next export CLI command to output: "export" in next.config for static site generation.'
+  -
+    pattern: (?<!await )\bcookies\(\s*\)
+    message: 'cookies() is async in Next.js 16 — add await: const cookieStore = await cookies()'
+    severity: error
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: (?<!await )\bheaders\(\s*\)
+    message: 'headers() is async in Next.js 16 — add await: const headersList = await headers()'
+    severity: error
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: =\s*(?!await\b)params\b
+    message: 'params is async in Next.js 16 — add await: const { slug } = await params'
+    severity: recommended
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: =\s*(?!await\b)searchParams\b
+    message: 'searchParams is async in Next.js 16 — add await: const { query } = await searchParams'
+    severity: recommended
+    skipIfFileContains: "^['\"]use client['\"]"
+  -
+    pattern: 'from\s+[''""](next-auth|@auth/core)[''""]|NextAuth\(|getServerSession\('
+    message: 'Legacy auth pattern detected. Modern Vercel apps should use Clerk, Descope, or Auth0 for managed authentication.'
+    severity: recommended
+    upgradeToSkill: auth
+    upgradeWhy: 'Migrate from next-auth/manual JWT to a managed auth provider (Clerk, Descope, Auth0) for better Vercel integration.'
+    skipIfFileContains: '@clerk/|@descope/|@auth0/'
+  -
+    pattern: 'NextApiRequest|NextApiResponse|export\s+default\s+function\s+handler'
+    message: 'Pages Router API handler detected. Use App Router route handlers with named HTTP exports instead.'
+    severity: recommended
+    upgradeToSkill: vercel-functions
+    upgradeWhy: 'Migrate from Pages Router API routes to App Router route handlers with Web Request/Response API.'
+    skipIfFileContains: 'export\s+(async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)'
+  -
+    pattern: 'from\s+[''""](lru-cache|node-cache|memory-cache)[''""]|new\s+(LRUCache|NodeCache)\('
+    message: 'In-process cache detected. Serverless deployments lose process memory between invocations.'
+    severity: recommended
+    upgradeToSkill: runtime-cache
+    upgradeWhy: 'Replace process-memory caches with Vercel Runtime Cache for shared, region-aware caching.'
+  -
+    pattern: 'from\s+[''""](express|fastify|koa|hapi)[''""]|require\s*\(\s*[''""](express|fastify|koa|hapi)[''""]'
+    message: 'Express/Fastify/Koa/Hapi server framework detected in a Next.js project. Use Next.js route handlers or proxy.ts for request handling instead.'
+    severity: recommended
+    upgradeToSkill: routing-middleware
+    upgradeWhy: 'Replace custom server frameworks with Next.js proxy.ts for request interception and route handlers for API endpoints.'
+    skipIfFileContains: 'proxy\.ts|from\s+[''""](next/server)[''""]|@vercel/functions'
+  -
+    pattern: 'from\s+[''""](typeorm|sequelize|mikro-orm|objection|bookshelf|knex)[''""]|require\s*\(\s*[''""](typeorm|sequelize|mikro-orm|objection|bookshelf|knex)[''""]'
+    message: 'Heavy ORM detected. Consider using lightweight serverless-native alternatives like Drizzle, Prisma, or direct Neon for better cold start performance.'
+    severity: recommended
+    upgradeToSkill: vercel-storage
+    upgradeWhy: 'Migrate from heavy ORMs to serverless-native database clients (Drizzle + Neon, Prisma, or @neondatabase/serverless) for faster cold starts.'
+    skipIfFileContains: 'from\s+[''""](drizzle-orm|@neondatabase|@prisma/client|prisma)[''""]'
+  -
+    pattern: 'fonts\.googleapis\.com|from\s+[''""](fontsource|@fontsource)[''""]|<link[^>]*fonts\.googleapis'
+    message: 'External font loader detected. Use next/font for zero-CLS, self-hosted font loading with automatic optimization.'
+    severity: recommended
+    upgradeToSkill: nextjs
+    upgradeWhy: 'Guides migration from external font loaders to next/font with Geist Sans/Mono for zero-CLS font optimization.'
+    skipIfFileContains: 'next/font'
+chainTo:
+  -
+    pattern: 'export\s+(default\s+)?function\s+middleware'
+    targetSkill: routing-middleware
+    message: 'middleware() is renamed to proxy() in Next.js 16 — loading Routing Middleware guidance for proxy.ts migration.'
+  -
+    pattern: "from\\s+['\"]@vercel/(postgres|kv)['\"]"
+    targetSkill: vercel-storage
+    message: 'Sunset storage package detected — loading Vercel Storage guidance for Neon/Upstash migration.'
+  -
+    pattern: "from\\s+['\"]@ai-sdk/(anthropic|openai)['\"]"
+    targetSkill: ai-gateway
+    message: 'Direct AI provider SDK import — loading AI Gateway guidance for unified model routing with failover and cost tracking.'
+  -
+    pattern: 'from\s+[''""](next-auth|@auth/core)[''""]|NextAuth\(|getServerSession\('
+    targetSkill: auth
+    message: 'Legacy auth pattern detected — loading managed authentication guidance (Clerk, Descope, Auth0).'
+  -
+    pattern: 'NextApiRequest|NextApiResponse|export\s+default\s+function\s+handler'
+    targetSkill: vercel-functions
+    message: 'Pages Router API handler detected — loading Vercel Functions guidance for App Router migration.'
+  -
+    pattern: 'from\s+[''""](lru-cache|node-cache|memory-cache)[''""]|new\s+(LRUCache|NodeCache)\('
+    targetSkill: runtime-cache
+    message: 'In-process cache detected — loading Runtime Cache guidance for serverless-compatible caching.'
+  -
+    pattern: 'fetch\s*\(\s*[''""](https?://)?(api\.openai\.com|api\.anthropic\.com|api\.cohere\.ai)'
+    targetSkill: ai-gateway
+    message: 'Raw AI provider fetch URL detected — loading AI Gateway guidance for unified routing, failover, and OIDC auth.'
+    skipIfFileContains: '@ai-sdk/|from\s+[''""](ai)[''""]|ai-gateway|gateway\('
+  -
+    pattern: 'jwt\.(sign|verify|decode)\(|from\s+[''""](jsonwebtoken)[''""]|new\s+SignJWT\(|jwtVerify\('
+    targetSkill: auth
+    message: 'Manual JWT token handling detected — loading Auth guidance for managed authentication (Clerk, Descope, Auth0).'
+    skipIfFileContains: 'clerkMiddleware|@clerk/|@auth0/|@descope/|from\s+[''""](next-auth)[''""]'
+  -
+    pattern: 'from\s+[''"]@/components/ui/|from\s+[''"]@/components/ui[''""]'
+    targetSkill: shadcn
+    message: 'shadcn/ui component imports detected — loading shadcn guidance for component composition, theming, and registry patterns.'
+    skipIfFileContains: 'shadcn|components\.json'
+  -
+    pattern: 'from\s+[''""](styled-components|@emotion/(react|styled)|@mui/material)[''""]'
+    targetSkill: shadcn
+
+codex
+I’ve loaded the Next.js guidance. Next I’m checking the branch, package scripts, and the target files so the tests match the project’s actual stack.
+exec
+/bin/bash -lc 'git status --short --branch' in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+## fix/mission-control-reliability
+ M hermes-bridge/bridge.mjs
+ M src/lib/langfuse-observability.ts
+?? .codex-brief.md
+?? codex-run.log
+?? supabase/
+
+exec
+/bin/bash -lc "sed -n '1,260p' src/app/observability/page.tsx" in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+"use client";
+
+import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  CircleDollarSign,
+  Database,
+  Gauge,
+  Layers3,
+  Link2,
+  RefreshCw,
+  Repeat2,
+  Wrench,
+} from "lucide-react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { Button, Delta, EmptyState, Eyebrow, Panel, Pill, SectionHeader, Skeleton, rise } from "@/components/ui/kit";
+import type {
+  AccountingSummary,
+  AmplificationMetrics,
+  CorrelationCoverage,
+  GraftCohortLens,
+  HermesObservability,
+  ModelAggregate,
+  ObservabilityCompleteness,
+  ObservabilityTotals,
+  ObservabilityWindow,
+  OperationAggregate,
+  ProviderAggregate,
+  SessionTraceAggregate,
+  SourceHealth,
+  TimeSeries,
+  TimeSeriesBucket,
+  ToolAggregate,
+  WasteFlag,
+} from "@/lib/langfuse-observability";
+
+type Tone = "neutral" | "up" | "down" | "warn" | "accent";
+
+async function getJSON<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url);
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+function fmtTokens(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(value >= 10_000 ? 0 : 1)}K`;
+  return value.toLocaleString("en-US");
+}
+
+function fmtUsd(value: number): string {
+  return `$${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function timeAgo(d: string | null): string {
+  if (!d) return "—";
+  const diff = Date.now() - new Date(d).getTime();
+  if (Number.isNaN(diff)) return "—";
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+function fmtRatio(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${value.toFixed(value >= 10 ? 0 : 1)}x`;
+}
+
+function fmtPct(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${(value * 100).toFixed(value < 0.1 ? 1 : 0)}%`;
+}
+
+function fmtCostBasis(value: string | null | undefined): string {
+  if (!value) return "basis unknown";
+  return value.replaceAll("_", " ");
+}
+
+function fmtMaybeUsd(value: number | null | undefined): string {
+  return value == null ? "—" : fmtUsd(value);
+}
+
+function fmtRange(value: { low: number; high: number; basis: string } | undefined): string {
+  if (!value) return "range unavailable";
+  return `${fmtUsd(value.low)}-${fmtUsd(value.high)} · ${value.basis}`;
+}
+
+function shortId(value: string | null | undefined, size = 12): string {
+  if (!value) return "—";
+  if (value.length <= size) return value;
+  return `${value.slice(0, size)}…`;
+}
+
+function sourceTone(status: SourceHealth["status"] | undefined): Tone {
+  if (status === "ok") return "up";
+  if (status === "error") return "down";
+  return "warn";
+}
+
+function coverageTone(status: CorrelationCoverage["status"] | AccountingSummary["reconciliation"] | undefined): Tone {
+  if (status === "observed") return "up";
+  if (status === "missing" || status === "invalid") return "down";
+  if (status === "partial") return "warn";
+  return "neutral";
+}
+
+function WindowToggle({
+  value,
+  onChange,
+}: {
+  value: ObservabilityWindow;
+  onChange: (value: ObservabilityWindow) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1 rounded-lg border border-[var(--line)] p-0.5">
+      {(["24h", "7d"] as const).map((window) => {
+        const active = value === window;
+        return (
+          <button
+            key={window}
+            type="button"
+            onClick={() => onChange(window)}
+            className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+              active
+                ? "bg-[var(--surface-2)] text-[var(--text)]"
+                : "text-[var(--text-3)] hover:text-[var(--text-2)]"
+            }`}
+          >
+            {window}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function MetricTile({
+  label,
+  value,
+  sub,
+  secondary,
+  icon,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  secondary?: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <Panel className="p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <Eyebrow>{label}</Eyebrow>
+        <span className="text-[var(--text-3)]">{icon}</span>
+      </div>
+      <div className="num text-[32px] font-semibold leading-none tracking-[-0.02em] text-[var(--text)]">{value}</div>
+      {sub && <p className="mt-2 truncate text-[12px] text-[var(--text-3)]">{sub}</p>}
+      {secondary && <p className="mt-1 truncate text-[11px] text-[var(--text-4)]">{secondary}</p>}
+    </Panel>
+  );
+}
+
+function StatCell({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="min-w-0 rounded-[var(--r-md)] border border-[var(--line)] bg-[var(--surface-1)] p-3">
+      <Eyebrow className="!text-[10px]">{label}</Eyebrow>
+      <p className="num mt-2 truncate text-[20px] font-semibold leading-none text-[var(--text)]">{value}</p>
+      {sub && <p className="mt-1 truncate text-[11px] text-[var(--text-3)]">{sub}</p>}
+    </div>
+  );
+}
+
+function HeaderHero({
+  data,
+  window,
+  onWindowChange,
+}: {
+  data: HermesObservability | null;
+  window: ObservabilityWindow;
+  onWindowChange: (value: ObservabilityWindow) => void;
+}) {
+  const source = data?.source;
+  return (
+    <div className="hq-rise pt-4 pb-10 flex flex-wrap items-end justify-between gap-6" style={rise(0)}>
+      <div>
+        <Eyebrow>Cost and waste</Eyebrow>
+        <h1 className="mt-2.5 text-[40px] font-semibold tracking-[-0.025em] leading-none text-[var(--hq-text)]">
+          Observability
+        </h1>
+        <p className="mt-3 max-w-3xl text-[13px] leading-relaxed text-[var(--hq-text-ghost)]">
+          Token burn, effective cost, repeated tool calls, and context amplification for shifting work to local models and stopping cloud waste.
+        </p>
+      </div>
+      <div className="flex flex-col items-start gap-2 sm:items-end">
+        <WindowToggle value={window} onChange={onWindowChange} />
+        <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+          <Pill tone={sourceTone(source?.status)}>
+            {source?.status === "ok" ? <CheckCircle2 className="h-3 w-3" /> : <AlertTriangle className="h-3 w-3" />}
+            {source?.message ?? "Langfuse loading"}
+          </Pill>
+          <Pill tone={source?.truncated ? "warn" : "neutral"}>
+            <Database className="h-3 w-3" />
+            <span className="num">{source ? `${source.includedRows}/${source.rows}` : "—"}</span>
+            rows
+            {source?.truncated ? " · truncated" : ""}
+          </Pill>
+          <Pill tone="neutral">
+            <RefreshCw className="h-3 w-3" />
+            {timeAgo(source?.lastSync ?? null)}
+          </Pill>
+        </div>
+        {source?.warning && <p className="max-w-xl text-right text-[11.5px] text-[var(--warn)]">{source.warning}</p>}
+        {source && source.filteredRows > 0 && (
+          <p className="max-w-xl text-right text-[11.5px] text-[var(--text-3)]">
+            Filtered <span className="num">{source.filteredRows}</span> synthetic/test rows from totals.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MetricTiles({ totals }: { totals: ObservabilityTotals | null }) {
+  return (
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-4">
+      <MetricTile
+        label="Total tokens"
+        value={totals ? fmtTokens(totals.totalTokens) : "—"}
+        sub={totals ? `${fmtTokens(totals.inputTokens)} in · ${fmtTokens(totals.outputTokens)} out` : "token totals unavailable"}
+        secondary={totals ? `${fmtTokens(totals.cacheReadTokens)} cache read · ${fmtTokens(totals.cacheWriteTokens)} cache write` : undefined}
+        icon={<Gauge className="h-4 w-4" />}
+      />
+      <MetricTile
+        label="Effective cost"
+        value={totals ? fmtUsd(totals.effectiveCost) : "—"}
+        sub={totals ? `reported ${fmtUsd(totals.reportedCost)} · ${fmtCostBasis(totals.costBasis)}` : "cost unavailable"}
+        secondary={totals ? `estimated ${fmtRange(totals.estimatedCostRange)}` : undefined}
+        icon={<CircleDollarSign className="h-4 w-4" />}
+      />
+
+exec
+/bin/bash -lc "sed -n '1,260p' src/app/floor/page.tsx" in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Background,
+  Controls,
+  Handle,
+  MiniMap,
+  Position,
+  ReactFlow,
+  useEdgesState,
+  useNodesState,
+  type Edge,
+  type ReactFlowInstance,
+  type Node,
+  type NodeProps,
+} from "@xyflow/react";
+import { Bot, Check, ExternalLink, FileCode2, GitBranch, Info, Radio, RefreshCw, X } from "lucide-react";
+import { EmptyState, Eyebrow, Panel, Pill, SectionHeader, Skeleton, rise } from "@/components/ui/kit";
+
+type RunStatusTone = "neutral" | "up" | "down" | "warn" | "accent";
+type FileOp = "read" | "patch" | "write" | "delete";
+
+interface RunIndex {
+  goal: string;
+  status: string;
+  attempts: number;
+  liveController?: boolean;
+  traceRunning?: boolean;
+  rung?: number | null;
+  specialist?: string | null;
+  shipped_pr?: string | null;
+  preview_url?: string | null;
+  lastActivity: string | null;
+  nodeLabels: string[];
+  filesTouched: number;
+}
+
+interface RecoveryEvent {
+  ts: string;
+  gid: string;
+  event: string;
+  reason?: string;
+  detail?: string;
+  pr?: string;
+}
+
+interface ConveyorActive {
+  goalId: string;
+  live: boolean;
+  status: string | null;
+  rung: number | null;
+  attempts: number | null;
+  pr: string | null;
+}
+interface ConveyorUpNext {
+  goalId: string;
+  title: string;
+  specialist: string | null;
+  dependencyReady?: boolean;
+  planRequired?: boolean;
+  waitingOn?: string[];
+}
+interface ConveyorBlocked {
+  goalId: string;
+  queueState: string;
+  blockedBy: string[];
+  failedDependencies: string[];
+}
+interface ConveyorBox {
+  label: string;
+  host: string;
+  reachable: boolean;
+  models: string[];
+}
+interface ConveyorState {
+  conveyorOn: boolean;
+  controllerPids: number[];
+  liveGoals: string[];
+  active: ConveyorActive[];
+  upNext: ConveyorUpNext[];
+  planRequired: { goalId: string; title: string }[];
+  blocked: ConveyorBlocked[];
+  counts: Record<string, number>;
+  focusPrefixes: string[];
+  message: string;
+  boxes: ConveyorBox[];
+  statusAgeSec: number | null;
+  statusMissing: boolean;
+  syncedAt: string | null;
+}
+
+interface RecoverySummary {
+  gid: string;
+  dispatches: number;
+  pr: string | null;
+  last: string | null;
+  at: string | null;
+}
+
+interface AgentTrace {
+  id: string;
+  label: string;
+  model: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  modelCalls: number;
+  toolCalls: number;
+  tools: Record<string, number>;
+}
+
+interface FileTrace {
+  path: string;
+  ops: Record<FileOp, number>;
+  total: number;
+  lastOp: FileOp | null;
+  lastNode: string | null;
+}
+
+interface TouchTrace {
+  agent: string;
+  path: string;
+  op: FileOp;
+  count: number;
+}
+
+interface LearningTrace {
+  attempt: number;
+  learned: string[];
+  inferred: string[];
+}
+
+interface CurrentActivity {
+  node: string;
+  kind: "model" | "tool" | "idle";
+  tool: string | null;
+  file: string | null;
+  at: string | null;
+}
+
+interface TimelineEntry {
+  seq: number;
+  node: string;
+  kind: "node_start" | "node_end" | "model" | "tool";
+  tool: string | null;
+  file: string | null;
+  at: string | null;
+}
+
+interface RunGraph {
+  goal: string;
+  attempt: number;
+  status: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  running: boolean;
+  agents: AgentTrace[];
+  files: FileTrace[];
+  flow: Array<{ from: string; to: string }>;
+  touches: TouchTrace[];
+  learnings: LearningTrace[];
+  currentAgent?: string | null;
+  currentActivity?: CurrentActivity | null;
+  timeline?: TimelineEntry[];
+  counts: { events: number; modelCalls: number; toolCalls: number };
+}
+
+type AgentNodeData = {
+  agent: AgentTrace;
+  running: boolean;
+};
+
+type FileNodeData = {
+  file: FileTrace;
+  active: boolean;
+};
+
+type AgentNode = Node<AgentNodeData, "agent">;
+type FileNode = Node<FileNodeData, "file">;
+type FloorNode = AgentNode | FileNode;
+
+const OP_COLOR: Record<FileOp, string> = {
+  read: "var(--text-3)",
+  patch: "var(--accent)",
+  write: "var(--up)",
+  delete: "var(--down)",
+};
+
+const FLOW_COLOR = "color-mix(in srgb, var(--accent) 70%, var(--text) 30%)";
+
+async function getJSON<T>(url: string): Promise<T | null> {
+  try {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return null;
+    return (await response.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
+function isTrulyRunning(run: Pick<RunIndex, "liveController"> | null | undefined) {
+  return run?.liveController === true;
+}
+
+function normalizeStatus(status: string | null | undefined) {
+  return String(status || "").toLowerCase();
+}
+
+function isFailedStatus(status: string | null | undefined) {
+  const normalized = normalizeStatus(status);
+  return ["failed", "failure", "crash", "error"].includes(normalized) || normalized.includes("fail");
+}
+
+function isTerminalSuccessStatus(status: string | null | undefined) {
+  return ["done", "complete", "completed", "passed", "success", "shipped", "merged"].includes(normalizeStatus(status));
+}
+
+function isRecoveringActive(active: ConveyorActive) {
+  if (active.live) return false;
+  const status = normalizeStatus(active.status);
+  return status === "running" || status === "recovering" || status === "external_recovery" || status.includes("recover");
+}
+
+type ConveyorFloorMode = "loading" | "live" | "recovering" | "on-idle" | "off";
+
+export function getConveyorFloorView(conveyor: ConveyorState | null): {
+  mode: ConveyorFloorMode;
+  liveActive: ConveyorActive[];
+  recoveringActive: ConveyorActive[];
+  buildingNow: ConveyorActive[];
+  headerConveyorLabel: string;
+  headerConveyorTone: RunStatusTone;
+  headerCountLabel: string;
+  headerCountTone: RunStatusTone;
+  headerStatusLabel: string;
+  headerStatusTone: RunStatusTone;
+  buildingActionLabel: string;
+  emptyTitle: string;
+  emptyHint: string;
+} {
+  if (!conveyor) {
+    return {
+      mode: "loading",
+      liveActive: [],
+      recoveringActive: [],
+      buildingNow: [],
+      headerConveyorLabel: "Syncing conveyor",
+      headerConveyorTone: "neutral",
+      headerCountLabel: "checking active goal",
+      headerCountTone: "neutral",
+      headerStatusLabel: "syncing status",
+      headerStatusTone: "neutral",
+      buildingActionLabel: "syncing conveyor",
+      emptyTitle: "Syncing conveyor",
+      emptyHint: "checking active goal",
+    };
+  }
+
+  const liveActive = conveyor.active.filter((active) => active.live);
+  const recoveringActive = conveyor.active.filter(isRecoveringActive);
+
+exec
+/bin/bash -lc 'cat package.json' in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+{
+  "name": "hermy-hq",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "postinstall": "prisma generate",
+    "start": "next start",
+    "lint": "eslint",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "db:seed": "npx tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "6.19.2",
+    "@prisma/client": "^6.19.2",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/formidable": "^3.4.6",
+    "@xyflow/react": "^12.11.2",
+    "better-sqlite3": "^12.11.1",
+    "drizzle-orm": "^0.45.2",
+    "formidable": "^3.5.4",
+    "googleapis": "^171.4.0",
+    "grammy": "^1.44.0",
+    "lucide-react": "^0.564.0",
+    "next": "16.1.6",
+    "pg": "^8.19.0",
+    "prisma": "^6.19.2",
+    "react": "19.2.3",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "19.2.3",
+    "recharts": "^3.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.10.0",
+    "@types/node": "^20",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.6",
+    "tailwindcss": "^4",
+    "tsx": "^4.22.4",
+    "typescript": "^5"
+  }
+}
+
+exec
+/bin/bash -lc "sed -n '1,240p' src/app/api/hermes/observability/route.ts" in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+import { NextResponse } from "next/server";
+import {
+  collectHermesObservability,
+  type HermesObservability,
+  parseObservabilityWindow,
+  type ObservabilityWindow,
+} from "@/lib/langfuse-observability";
+
+const CACHE_MS = 7000;
+
+const cache = new Map<
+  ObservabilityWindow,
+  {
+    expiresAt: number;
+    payload: HermesObservability;
+  }
+>();
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const window = parseObservabilityWindow(url.searchParams.get("window") ?? "24h");
+
+  if (!window) {
+    return NextResponse.json(
+      { error: "Invalid window. Use 24h or 7d." },
+      { status: 400 },
+    );
+  }
+
+  const now = Date.now();
+  const cached = cache.get(window);
+  if (cached && cached.expiresAt > now) {
+    return NextResponse.json(cached.payload);
+  }
+
+  const payload = await collectHermesObservability(window);
+  cache.set(window, {
+    expiresAt: now + CACHE_MS,
+    payload,
+  });
+
+  return NextResponse.json(payload);
+}
+
+codex
+There are pre-existing unrelated changes in the worktree; I’ll leave them alone. I’m continuing with the target files only and checking whether this repo already has a test runner or exported helpers pattern.
+exec
+/bin/bash -lc "sed -n '260,620p' src/app/floor/page.tsx" in /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ succeeded in 0ms:
+  const recoveringActive = conveyor.active.filter(isRecoveringActive);
+  const buildingNow = [...liveActive, ...recoveringActive];
+  const statusStale = conveyor.statusAgeSec != null && conveyor.statusAgeSec > 120;
+  const headerStatusLabel =
+    conveyor.statusAgeSec == null ? "no status" : statusStale ? `stale ${conveyor.statusAgeSec}s` : `${conveyor.statusAgeSec}s ago`;
+  const headerStatusTone: RunStatusTone = statusStale ? "down" : "neutral";
+
+  if (liveActive.length > 0) {
+    return {
+      mode: "live",
+      liveActive,
+      recoveringActive,
+      buildingNow,
+      headerConveyorLabel: "Conveyor ON",
+      headerConveyorTone: "up",
+      headerCountLabel: `${liveActive.length} building now`,
+      headerCountTone: "accent",
+      headerStatusLabel,
+      headerStatusTone,
+      buildingActionLabel: "conveyor on",
+      emptyTitle: "Conveyor on — nothing dispatched yet",
+      emptyHint: conveyor.message || "Waiting for a ready goal to promote.",
+    };
+  }
+
+  if (recoveringActive.length > 0) {
+    return {
+      mode: "recovering",
+      liveActive,
+      recoveringActive,
+      buildingNow,
+      headerConveyorLabel: "Conveyor recovering",
+      headerConveyorTone: "warn",
+      headerCountLabel: `${recoveringActive.length} recovering`,
+      headerCountTone: "warn",
+      headerStatusLabel,
+      headerStatusTone,
+      buildingActionLabel: "recovering",
+      emptyTitle: "Conveyor recovering",
+      emptyHint: conveyor.message || "Waiting for the queue timer to restart the controller.",
+    };
+  }
+
+  if (conveyor.conveyorOn) {
+    return {
+      mode: "on-idle",
+      liveActive,
+      recoveringActive,
+      buildingNow,
+      headerConveyorLabel: "Conveyor ON",
+      headerConveyorTone: "up",
+      headerCountLabel: "idle",
+      headerCountTone: "neutral",
+      headerStatusLabel,
+      headerStatusTone,
+      buildingActionLabel: "conveyor on",
+      emptyTitle: "Conveyor on — nothing dispatched yet",
+      emptyHint: conveyor.message || "Waiting for a ready goal to promote.",
+    };
+  }
+
+  return {
+    mode: "off",
+    liveActive,
+    recoveringActive,
+    buildingNow,
+    headerConveyorLabel: "Conveyor OFF",
+    headerConveyorTone: "down",
+    headerCountLabel: "idle",
+    headerCountTone: "neutral",
+    headerStatusLabel,
+    headerStatusTone,
+    buildingActionLabel: "conveyor off",
+    emptyTitle: "Conveyor off",
+    emptyHint: conveyor.message || "Start rt-goal-queue.timer to resume dispatch.",
+  };
+}
+
+function statusTone(status: string, running = false): RunStatusTone {
+  const normalized = normalizeStatus(status);
+  if (running) return "accent";
+  if (isTerminalSuccessStatus(normalized)) return "up";
+  if (isFailedStatus(normalized)) return "down";
+  if (["shipping", "shipped", "deploying", "merged"].includes(normalized)) return "warn";
+  if (normalized.includes("blocked")) return "warn";
+  return "neutral";
+}
+
+function fmtRelative(value: string | null) {
+  if (!value) return "no activity";
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return "no activity";
+  const seconds = Math.max(0, Math.round((Date.now() - time) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return new Date(time).toLocaleDateString();
+}
+
+function shortPath(value: string) {
+  const parts = value.split("/").filter(Boolean);
+  if (parts.length <= 3) return value;
+  return `${parts.at(-3)}/${parts.at(-2)}/${parts.at(-1)}`;
+}
+
+function safeId(prefix: string, value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return `${prefix}:${hash.toString(16)}`;
+}
+
+function AgentTraceNode({ data }: NodeProps<AgentNode>) {
+  const toolEntries = Object.entries(data.agent.tools).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  return (
+    <div className={`floor-node floor-node-agent ${data.running ? "is-running" : ""}`}>
+      <Handle type="target" position={Position.Left} className="floor-handle" />
+      <Handle type="source" position={Position.Right} className="floor-handle" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <Bot className="h-4 w-4 text-[var(--accent)]" />
+            <h3 className="truncate text-[13px] font-semibold text-[var(--text)]">{data.agent.label}</h3>
+          </div>
+          <p className="mt-1 truncate text-[11.5px] text-[var(--text-3)]">{data.agent.model || "model pending"}</p>
+        </div>
+        <Pill tone={data.running ? "accent" : "neutral"} className="!py-0.5 !text-[10px]">
+          {data.running ? "live" : "seen"}
+        </Pill>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <div>
+          <Eyebrow>Model calls</Eyebrow>
+          <p className="num mt-1 text-[18px] font-semibold text-[var(--text)]">{data.agent.modelCalls}</p>
+        </div>
+        <div>
+          <Eyebrow>Tool calls</Eyebrow>
+          <p className="num mt-1 text-[18px] font-semibold text-[var(--accent)]">{data.agent.toolCalls}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {toolEntries.length ? toolEntries.map(([tool, count]) => (
+          <span key={tool} className="rounded-full border border-[var(--line)] px-2 py-1 text-[10.5px] text-[var(--text-2)]">
+            {tool} <span className="num text-[var(--text-3)]">x{count}</span>
+          </span>
+        )) : (
+          <span className="text-[11px] text-[var(--text-4)]">No tool calls yet</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FileTraceNode({ data }: NodeProps<FileNode>) {
+  const op = data.file.lastOp || "read";
+  return (
+    <div className={`floor-node floor-node-file ${data.active ? "is-active" : ""}`}>
+      <Handle type="target" position={Position.Left} className="floor-handle" />
+      <div className="flex items-start gap-2.5">
+        <FileCode2 className="mt-0.5 h-4 w-4 shrink-0" style={{ color: OP_COLOR[op] }} />
+        <div className="min-w-0">
+          <h3 className="truncate text-[12.5px] font-semibold text-[var(--text)]">{shortPath(data.file.path)}</h3>
+          <p className="mt-1 truncate text-[10.5px] text-[var(--text-4)]">{data.file.path}</p>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {(["read", "patch", "write", "delete"] as FileOp[]).map((item) => (
+          data.file.ops[item] > 0 && (
+            <span key={item} className="rounded-full border border-[var(--line)] px-2 py-1 text-[10px]" style={{ color: OP_COLOR[item] }}>
+              {item} <span className="num">x{data.file.ops[item]}</span>
+            </span>
+          )
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes = {
+  agent: AgentTraceNode,
+  file: FileTraceNode,
+};
+
+function buildGraph(graph: RunGraph): { nodes: FloorNode[]; edges: Edge[] } {
+  const agentByLabel = new Map(graph.agents.map((agent) => [agent.label, agent]));
+  const fileIdByPath = new Map(graph.files.map((file) => [file.path, safeId("file", file.path)]));
+  const nodes: FloorNode[] = [];
+  const edges: Edge[] = [];
+
+  graph.agents.forEach((agent, index) => {
+    const running = graph.currentAgent ? agent.label === graph.currentAgent : graph.running && !agent.endedAt;
+    nodes.push({
+      id: safeId("agent", agent.label),
+      type: "agent",
+      position: { x: 0, y: index * 168 },
+      data: { agent, running },
+    });
+  });
+
+  graph.files.slice(0, 60).forEach((file, index) => {
+    nodes.push({
+      id: fileIdByPath.get(file.path) || safeId("file", file.path),
+      type: "file",
+      position: { x: 480 + (index % 2) * 280, y: Math.floor(index / 2) * 124 },
+      data: { file, active: graph.currentActivity?.file === file.path },
+    });
+  });
+
+  graph.flow.forEach((edge, index) => {
+    const source = agentByLabel.has(edge.from) ? safeId("agent", edge.from) : null;
+    const target = agentByLabel.has(edge.to) ? safeId("agent", edge.to) : null;
+    if (!source || !target) return;
+    edges.push({
+      id: `flow:${source}:${target}:${index}`,
+      source,
+      target,
+      type: "smoothstep",
+      animated: true,
+      style: { stroke: FLOW_COLOR, strokeWidth: 1.8 },
+      markerEnd: { type: "arrowclosed", color: "var(--accent)" },
+    });
+  });
+
+  graph.touches.forEach((touch, index) => {
+    const source = agentByLabel.has(touch.agent) ? safeId("agent", touch.agent) : null;
+    const target = fileIdByPath.get(touch.path);
+    if (!source || !target) return;
+    edges.push({
+      id: `touch:${source}:${target}:${touch.op}:${index}`,
+      source,
+      target,
+      type: "smoothstep",
+      label: touch.count > 1 ? String(touch.count) : touch.op,
+      style: { stroke: OP_COLOR[touch.op], strokeWidth: touch.op === "patch" || touch.op === "write" ? 2.2 : 1.4 },
+      labelStyle: { fill: "var(--text-2)", fontSize: 10 },
+      labelBgStyle: { fill: "var(--surface-1)", fillOpacity: 0.92 },
+      markerEnd: { type: "arrowclosed", color: OP_COLOR[touch.op] },
+    });
+  });
+
+  return { nodes, edges };
+}
+
+function nodeSignature(node: FloorNode) {
+  return JSON.stringify({ type: node.type, data: node.data });
+}
+
+function edgeSignature(edge: Edge) {
+  return JSON.stringify({ source: edge.source, target: edge.target, label: edge.label, animated: edge.animated, style: edge.style });
+}
+
+function mergeNodes(previous: FloorNode[], incoming: FloorNode[]): FloorNode[] {
+  const previousById = new Map(previous.map((node) => [node.id, node]));
+  return incoming.map((node) => {
+    const current = previousById.get(node.id);
+    if (!current) return node;
+    if (nodeSignature(current) === nodeSignature(node)) return current;
+    return { ...current, type: node.type, data: node.data } as FloorNode;
+  });
+}
+
+function mergeEdges(previous: Edge[], incoming: Edge[]): Edge[] {
+  const previousById = new Map(previous.map((edge) => [edge.id, edge]));
+  return incoming.map((edge) => {
+    const current = previousById.get(edge.id);
+    return current && edgeSignature(current) === edgeSignature(edge) ? current : edge;
+  });
+}
+
+function activityText(graph: RunGraph) {
+  const activity = graph.currentActivity;
+  const agent = graph.currentAgent || activity?.node || "idle";
+  if (!activity) return agent + " · waiting";
+  const model = graph.agents.find((item) => item.label === activity.node)?.model;
+  const pieces = [agent];
+  if (model) pieces.push(model);
+  pieces.push(activity.kind === "tool" ? activity.tool || "tool" : activity.kind === "model" ? activity.tool || "MODEL_CALL" : "idle");
+  if (activity.file) pieces.push("→ " + shortPath(activity.file));
+  pieces.push(fmtRelative(activity.at));
+  return pieces.join(" · ");
+}
+
+function timelineText(item: TimelineEntry) {
+  const action = item.kind === "node_start" ? "NODE_START" : item.kind === "node_end" ? "NODE_END" : item.tool || item.kind.toUpperCase();
+  return item.file ? item.node + " → " + action + " " + shortPath(item.file) : item.node + " → " + action;
+}
+
+type RunBucket = "active" | "done" | "failed";
+
+function runBucket(run: RunIndex): RunBucket {
+  const s = normalizeStatus(run.status);
+  if (isFailedStatus(s)) return "failed";
+  if (
+    isTrulyRunning(run) ||
+    ["pending", "staged", "ready", "blocked", "queued", "recovering", "external_recovery"].includes(s)
+  )
+    return "active";
+  if (isTerminalSuccessStatus(s) || s === "shipping") return "done";
+  // superseded / unknown / any other terminal-ish status → Completed (not actionable, keep out of Up next)
+  return "done";
+}
+
+function hasSubstantiveGraph(run: RunIndex) {
+  return run.filesTouched > 0 || run.nodeLabels.length > 1;
+}
+
+function defaultSelectedGoal(runs: RunIndex[]) {
+  // Live floor: a truly-running controller wins, then the newest substantive graph, then newest overall.
+  return runs.find(isTrulyRunning)?.goal ?? runs.find(hasSubstantiveGraph)?.goal ?? runs[0]?.goal ?? null;
+}
+
+const RUN_TABS: Array<{ key: RunBucket; label: string }> = [
+  { key: "active", label: "Up next + running" },
+  { key: "done", label: "Completed" },
+  { key: "failed", label: "Failed" },
+];
+
+const RECOVERY_LABEL: Record<string, string> = {
+  codex_dispatch: "Codex dispatched",
+  scope_ok: "Scope gate passed",
+  scope_refused: "Scope gate REFUSED",
+  acceptance_pass: "Acceptance passed",
+  acceptance_fail: "Acceptance failed",
+  pr_opened: "PR opened",
+  codex_failed: "Codex run failed",
+  push_failed: "Push failed",
+  skip: "Skipped",
+  plan: "Planned (dry)",
+};
+
+function recoveryTone(event: string): RunStatusTone {
+  if (["acceptance_pass", "pr_opened", "scope_ok"].includes(event)) return "up";
+  if (["scope_refused", "acceptance_fail", "codex_failed", "push_failed"].includes(event)) return "down";
+  if (event === "codex_dispatch") return "accent";
+  return "neutral";
+}
+
+function RecoveryLog({ events, forGoal }: { events: RecoveryEvent[]; forGoal: string | null }) {
+  const scoped = forGoal ? events.filter((event) => event.gid === forGoal) : events;
+  const recent = scoped.slice(-40).reverse();
+  if (recent.length === 0) {
+    return (
+      <div className="mt-3 rounded-[var(--r-md)] border border-dashed border-[var(--line)] px-3 py-4 text-center text-[11px] text-[var(--text-4)]">
+        No Codex corrections logged yet. Failed goals stamped eligible are picked up here.
+      </div>
+    );
+  }
+  return (
+    <div className="mt-3 space-y-1.5">
+      <Eyebrow>Codex correction log{forGoal ? "" : " (all goals)"}</Eyebrow>
+      {recent.map((event, index) => (
+        <div
+          key={`${event.gid}:${event.ts}:${index}`}
+          className="flex items-start justify-between gap-2 rounded-[var(--r-sm)] border border-[var(--line)] bg-[var(--surface-1)] px-2.5 py-1.5"
+        >
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <Pill tone={recoveryTone(event.event)} className="!py-0.5 !text-[9.5px]">
+

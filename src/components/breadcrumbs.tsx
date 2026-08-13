@@ -13,6 +13,7 @@ const pathLabels: Record<string, string> = {
   "/longform": "Longform",
   "/articles": "Articles",
   "/client-pulse": "Client Pulse",
+  "/floor": "Floor",
   "/agents": "Agents",
   "/ideas": "Ideas",
   "/garden": "Garden",

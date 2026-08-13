@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 
-const prisma = new PrismaClient();
 const INTERNAL_SECRET = process.env.INTERNAL_API_SECRET;
 const CACHE_KEYS = ['notion_clients_monthly', 'mcf_monthly', 'ltv_monthly'];
 

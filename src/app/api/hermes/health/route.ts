@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { readHermesBridgeHealth } from "@/lib/hermes-native-mirror";
+
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 export async function GET() {
-  const row = await prisma.dataStore.findUnique({ where: { key: "hermes-health" } });
-  return NextResponse.json(row?.data ?? { online: false, gateway: "unknown", lastSeen: null });
+  const health = await readHermesBridgeHealth();
+  return NextResponse.json(health, {
+    headers: { "Cache-Control": "no-store, no-cache, must-revalidate" },
+  });
 }
