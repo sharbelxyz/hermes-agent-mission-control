@@ -1,0 +1,29 @@
+[Unit]
+Description=Hermes native Mission Control bridge
+After=network-online.target hermy-hq-next.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=phillip_downs
+Group=phillip_downs
+WorkingDirectory=/home/phillip_downs/Documents/GitHub/hermes-agent-mission-control/hermes-bridge
+EnvironmentFile=/etc/hermy-hq/hermes-bridge.env
+Environment=HOME=/home/phillip_downs
+Environment=PATH=/home/phillip_downs/.local/bin:/usr/local/bin:/usr/bin:/bin
+Environment=HERMES_NATIVE_SNAPSHOT_URL=http://127.0.0.1:3020/api/hermes/native
+ExecStart=/home/phillip_downs/.local/bin/node /home/phillip_downs/Documents/GitHub/hermes-agent-mission-control/hermes-bridge/bridge.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/phillip_downs/Documents/GitHub/hermes-agent-mission-control
+ReadWritePaths=/home/phillip_downs/.hermes /var/cache/hermy-hq /var/log/hermy-hq /run/hermy-hq
+CacheDirectory=hermy-hq
+LogsDirectory=hermy-hq
+RuntimeDirectory=hermy-hq
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

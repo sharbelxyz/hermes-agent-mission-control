@@ -8,8 +8,8 @@
 ---
 
 You are helping your operator install **Hermy HQ**, a self-hostable mission-control
-dashboard (Next.js 16, React 19, Tailwind v4, Prisma + Postgres, NextAuth Google
-login) that pairs with you, their local Hermes agent, over a shared Postgres database
+dashboard (Next.js 16, React 19, Tailwind v4, Prisma + Postgres) that pairs
+with you, their local Hermes agent, over a shared Postgres database
 used as a message bus. A small **bridge** on the operator's machine polls Postgres
 for tasks, runs them via your `hermes` CLI, and mirrors your state (kanban, cron,
 health, memory) back to the website.
@@ -38,8 +38,6 @@ Verify the operator has each of these; ask them to confirm or help them install:
   Vercel Postgres). Ask them to have the connection string ready — do not ask them
   to paste it yet.
 - A **Vercel account** (for deploying the website)
-- A **Google OAuth app** (OAuth 2.0 Web client) for login. If they do not have one,
-  point them to https://console.cloud.google.com/apis/credentials.
 - **You**, Hermes, are installed and reachable — confirm the `hermes` CLI resolves
   on this machine (`which hermes`).
 
@@ -60,13 +58,6 @@ Open `.env` and go through the **Required · Core** group with the operator. For
 of these, ask them to paste the real value, then write it into `.env` for them —
 never invent one:
 - `DATABASE_URL` and `POSTGRES_URL` (usually the same Postgres URL)
-- `NEXTAUTH_URL` — use `http://localhost:3000` for now
-- `NEXTAUTH_SECRET` — you MAY generate this one locally with
-  `openssl rand -base64 32` (it is a random secret, not an account credential),
-  then show it to the operator
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` — ask the operator to paste from
-  their Google OAuth app
-- `ALLOWED_EMAILS` — the Google email(s) allowed to sign in
 - `NEXT_PUBLIC_OWNER_NAME` and `NEXT_PUBLIC_BASE_URL`
 
 Then set the **Hermes / bridge** group: `HERMES_BOARD`, `HERMES_BIN`, `HERMES_WIKI`,
@@ -86,9 +77,8 @@ always the cause — recheck it with the operator.
 ```sh
 npm run dev
 ```
-Ask the operator to open http://localhost:3000 and sign in with a Google account
-listed in `ALLOWED_EMAILS`. Confirm they see the dashboard. Stop the dev server when
-they confirm.
+Ask the operator to open http://localhost:3000. Confirm they see the dashboard.
+Stop the dev server when they confirm.
 
 ### Step 6 — Deploy to Vercel
 Guide them through:
@@ -101,11 +91,8 @@ Then have the operator:
 1. Add **every** variable from `.env` in Vercel → Project → Settings → Environment
    Variables. Ask them to paste values into Vercel themselves (or read them back so
    you can guide) — do not fabricate any.
-2. Update `NEXTAUTH_URL` and `NEXT_PUBLIC_BASE_URL` to the production URL, both
-   locally and in Vercel.
-3. In the Google Cloud console, add the authorized redirect URI
-   `https://<their-domain>/api/auth/callback/google`.
-Confirm they can sign in on the production URL.
+2. Update `NEXT_PUBLIC_BASE_URL` to the production URL, both locally and in Vercel.
+Confirm Mission Control opens directly on the production URL.
 
 ### Step 7 — Set up the bridge (connect the bus)
 On this machine (where you, Hermes, live), set up the bridge so the website and you

@@ -1,0 +1,26 @@
+{
+  "fixture": "partial-upload",
+  "records": [
+    {
+      "schema_version": "mc.operation.v1",
+      "record_kind": "export_state",
+      "operation_id": "op_partial_upload",
+      "attempt_id": "att_partial_upload_1",
+      "span_id": "span_partial_export",
+      "idempotency_key": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "goal_id": "goal_p1b",
+      "run_id": "run_s1",
+      "stage": "export",
+      "operation_type": "export",
+      "operation_name": "partial_upstream_upload",
+      "status": "partial_upload",
+      "started_at": "2026-08-05T00:06:00.000Z",
+      "ended_at": "2026-08-05T00:06:00.020Z",
+      "duration_ms": 20,
+      "usage": { "input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "cache_read_tokens": 0, "cache_write_tokens": 0 },
+      "cost": { "basis": "none", "amount_usd": 0 },
+      "privacy": { "metadata_only": true, "content_recorded": false, "tool_io_recorded": false },
+      "export": { "state": "partial_upload", "local_recorded": true, "upstream_recorded": true, "replay_count": 0 }
+    }
+  ]
+}
